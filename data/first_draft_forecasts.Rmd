@@ -1,0 +1,121 @@
+---
+title: "DataExploration"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r}
+#install.packages('agridat')
+library(agridat)
+library(lubridate)
+library(ggplot2)
+library(forecast)  
+library(Kendall)
+library(tseries)
+library(outliers)
+library(tidyverse)
+library(cowplot)
+library(smooth)
+library(kableExtra)
+
+```
+
+Exploring Data
+```{r}
+
+soybean <- nass.soybean
+soybean <- soybean %>% filter(state == "Iowa")
+soybean$year[length(soybean$year)]
+
+n_for <- 5
+nobs <- nrow(soybean)
+nvar <- ncol(soybean)
+
+nobs-n_for
+
+soybean$yield[1:83]
+
+
+ts_soybean <- ts(soybean$yield[1:(nobs-n_for)],
+                 start = soybean$year[1],
+                 frequency = 1)
+
+plot <- ggplot(soybean) + 
+  geom_line(aes(x = year, y = yield))
+```
+
+
+Plotting Data
+```{r}
+ts <- autoplot(ts_soybean, plot = FALSE)
+
+pacf <- autoplot(Pacf(ts_soybean, lag = 40, plot=FALSE),  
+                  main = "PACF")
+
+acf <- autoplot(Acf(ts_soybean, lag = 40, plot=FALSE),  
+                  main = "ACF")
+
+plot_grid(ts, pacf, acf,
+          nrow = 3
+)
+```
+
+Stationary Test
+```{r}
+print((adf.test(ts_soybean,alternative="stationary")))
+#P value less than .05 so we fail to reject H0, data has no stochastic trend
+
+```
+
+Forecasting Simple Techniques
+```{r}
+naive_soy <- naive(ts_soybean, h = 5)
+plot(naive_soy)
+
+#simple moving average
+sma_soy <- sma(y = ts_soybean, h = 5, holdout = FALSE, silent = FALSE)
+plot(sma_soy)
+
+#simple exponential smoothing
+ses_soy <- ses(y = ts_soybean, h = 5, holdout = FALSE, silent = FALSE)
+
+plot(ts_soybean, col = 'black')
+lines(ses_soy$fitted, col = 'blue')
+
+#auto sarima
+sarima_soy <- auto.arima(ts_soybean)
+print(sarima_soy)
+
+sarima_forecast <- forecast(object = sarima_soy, h = 5)
+checkresiduals(sarima_forecast)
+plot(sarima_forecast)
+
+
+```
+
+
+Advanced techniques
+
+State space exponential smoothing
+```{r}
+SSES_soy <- es(ts_soybean, model = "ZZZ", h = n_for, holdout = FALSE)
+plot(SSES_soy)
+checkresiduals(SSES_soy)
+
+```
+
+
+Checking accuracy
+```{r}
+observed <- soybean[(nobs-n_for+1):nobs, 'yield']
+sarima_scores <- accuracy(sarima_forecast$mean, observed)
+plot(sarima_forecast)
+
+
+```
+
+
+
+
