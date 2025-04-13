@@ -26,21 +26,28 @@ Exploring Data
 ```{r}
 
 soybean <- nass.soybean
-soybean <- soybean %>% filter(state == "Iowa")
-soybean$year[length(soybean$year)]
 
-n_for <- 5
+soybean <- soybean %>% 
+  group_by(year) %>% 
+  summarise(yield = mean(yield))
+
+
+n_for <- round(nrow(soybean) * .10)
 nobs <- nrow(soybean)
 nvar <- ncol(soybean)
 
-nobs-n_for
 
-soybean$yield[1:83]
-
-
-ts_soybean <- ts(soybean$yield[1:(nobs-n_for)],
+ts_soybean_train <- ts(soybean$yield[1:(nobs-n_for)],
                  start = soybean$year[1],
                  frequency = 1)
+
+ts_soybean_full <- ts(soybean$yield,
+                      start = soybean$year[1],
+                      frequency = 1)
+
+ts_soybean_test <- ts(soybean$yield[(nobs-n_for+1):nrow(soybean)],
+                      start = soybean$year[nobs-n_for+1],
+                      frequency = 1)
 
 plot <- ggplot(soybean) + 
   geom_line(aes(x = year, y = yield))
@@ -85,37 +92,76 @@ plot(ts_soybean, col = 'black')
 lines(ses_soy$fitted, col = 'blue')
 
 #auto sarima
-sarima_soy <- auto.arima(ts_soybean)
+sarima_soy <- auto.arima(ts_soybean_train)
 print(sarima_soy)
 
 sarima_forecast <- forecast(object = sarima_soy, h = 5)
 checkresiduals(sarima_forecast)
-plot(sarima_forecast)
+autoplot(sarima_forecast) +
+  autolayer(ts_soybean_test)
+
+sarima_scores <- accuracy(sarima_forecast$mean, ts_soybean_test)
+
+#edit to include all
+kbl(sarima_scores, 
+      caption = "Forecast Accuracy for SARIMA",
+      digits = array(5,ncol(sarima_scores))) %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  #highlight model with lowest RMSE
+  kable_styling(latex_options="striped", stripe_index = which.min(sarima_scores[,"RMSE"]))
 
 
 ```
 
 
-Advanced techniques
+BATS
+
+```{r}
+TBATS_fit <- tbats(ts_soybean_train)
+TBATS_forecast <- forecast(TBATS_fit, h = n_for)
+
+autoplot(TBATS_forecast) + 
+  autolayer((ts_soybean_test))
+
+TBATS_scores <- accuracy(TBATS_forecast$mean, ts_soybean_test)
+
+```
+
+Neural Network
+
+```{r}
+NN_fit <- nnetar(ts_soybean_train,
+                 P = 2,
+                 p = 2)
+                
+NN_forecast <- forecast(NN_fit,
+                        h = n_for) 
+
+autoplot(NN_forecast) + 
+  autolayer(ts_soybean_test)
+
+ts_soybean_train
+
+
+```
+
 
 State space exponential smoothing
 ```{r}
-SSES_soy <- es(ts_soybean, model = "ZZZ", h = n_for, holdout = FALSE)
+SSES_soy <- es(ts_soybean_train, model = "ZZZ", h = n_for, holdout = FALSE)
 plot(SSES_soy)
 checkresiduals(SSES_soy)
+SSES_soy$model
+
+SS_fit <- StructTS(ts_soybean_train,
+                   type = "trend")
+checkresiduals(SS_fit)
+
+SS_forecast <- forecast(SS_fit, h = n_for)
+
+autoplot(SS_forecast) +
+  autolayer(ts_soybean_test)
 
 ```
-
-
-Checking accuracy
-```{r}
-observed <- soybean[(nobs-n_for+1):nobs, 'yield']
-sarima_scores <- accuracy(sarima_forecast$mean, observed)
-plot(sarima_forecast)
-
-
-```
-
-
 
 
