@@ -25,65 +25,81 @@ Exploring Data
 ```{r}
 
 corn <- nass.corn
+corn$bushels <- corn$acres * corn$yield
 aggregated_corn <- corn %>%
   group_by(year) %>%
-  summarise(total_yield = sum(yield), total_acreage = sum(acres))
+  summarise(total_bushels = sum(bushels), total_acreage = sum(acres))
+
+aggregated_corn$total_yield <- aggregated_corn$total_bushels / aggregated_corn$total_acreage
 
 yield_ts <- ts(aggregated_corn$total_yield, start=aggregated_corn$year[1], frequency = 1)
-autoplot(yield_ts)
+yield_plot <- autoplot(yield_ts)+ylab("Corn Yield (Bushels/Acre)")+ggtitle("US Corn Yield (1866-2011)")
+yield_plot
+
+acreage_ts <- ts(aggregated_corn$total_acreage, start=aggregated_corn$year[1], frequency = 1)
+autoplot(acreage_ts)
 
 # Reserve ~10% data for testing
 nobs <- nrow(aggregated_corn)
-nobs <- nobs - (nobs %/% 10)
+nobs_test <- nobs %/% 10
+nobs <- nobs - nobs_test
 corn_training_data <- aggregated_corn[1:nobs,]
 corn_test_data <- aggregated_corn[(nobs+1) : nrow(aggregated_corn),]
+
+yield_training_ts <- ts(corn_training_data$total_yield, start=corn_training_data$year[1], frequency = 1)
+yield_test_ts <- ts(corn_test_data$total_yield, start=corn_test_data$year[1], frequency = 1)
+
 ```
 
 
-Plotting Data
+ACF/PACF
 ```{r}
-ts <- autoplot(ts_soybean, plot = FALSE)
-
-pacf <- autoplot(Pacf(ts_soybean, lag = 40, plot=FALSE),  
-                  main = "PACF")
-
-acf <- autoplot(Acf(ts_soybean, lag = 40, plot=FALSE),  
+acf <- autoplot(Acf(yield_ts, lag = 40, plot=FALSE),  
                   main = "ACF")
 
-plot_grid(ts, pacf, acf,
+pacf <- autoplot(Pacf(yield_ts, lag = 40, plot=FALSE),  
+                  main = "PACF")
+
+plot_grid(yield_plot, pacf, acf,
           nrow = 3
 )
 ```
 
 Stationary Test
 ```{r}
-print((adf.test(ts_soybean,alternative="stationary")))
-#P value less than .05 so we fail to reject H0, data has no stochastic trend
+print((adf.test(yield_ts,alternative="stationary")))
+# p value = 0.99, so we fail to reject H0, data has stochastic trend
+
+diff_yield <- diff(yield_ts)
+print((adf.test(diff_yield,alternative="stationary")))
+
 
 ```
 
 Forecasting Simple Techniques
 ```{r}
-naive_soy <- naive(ts_soybean, h = 5)
-plot(naive_soy)
+naive_corn <- naive(yield_training_ts, h = nobs_test)
+plot(naive_corn)
 
 #simple moving average
-sma_soy <- sma(y = ts_soybean, h = 5, holdout = FALSE, silent = FALSE)
-plot(sma_soy)
+sma_corn <- sma(y = yield_training_ts, h = nobs_test, holdout = FALSE, silent = FALSE)
+plot(sma_corn)
 
 #simple exponential smoothing
-ses_soy <- ses(y = ts_soybean, h = 5, holdout = FALSE, silent = FALSE)
+ses_corn <- ses(y = yield_training_ts, h = nobs_test, holdout = FALSE, silent = FALSE)
+autoplot(ses_corn)
 
-plot(ts_soybean, col = 'black')
-lines(ses_soy$fitted, col = 'blue')
+plot(yield_ts, col = 'black')
+lines(ses_corn$fitted, col = 'blue')
+lines(ses_corn$mean, col = 'blue')
 
 #auto sarima
-sarima_soy <- auto.arima(ts_soybean)
-print(sarima_soy)
+sarima_corn <- auto.arima(yield_training_ts)
+print(sarima_corn)
 
-sarima_forecast <- forecast(object = sarima_soy, h = 5)
+sarima_forecast <- forecast(object = sarima_corn, h = nobs_test)
 checkresiduals(sarima_forecast)
-plot(sarima_forecast)
+autoplot(sarima_forecast)+ylab("Corn Yield")
 
 
 ```
@@ -93,19 +109,42 @@ Advanced techniques
 
 State space exponential smoothing
 ```{r}
-SSES_soy <- es(ts_soybean, model = "ZZZ", h = n_for, holdout = FALSE)
-plot(SSES_soy)
-checkresiduals(SSES_soy)
+SSES_corn <- es(yield_training_ts, model = "ZZZ", h = nobs_test, holdout = FALSE)
+sses_forecast <- forecast(SSES_corn, h=nobs_test)
+plot(sses_forecast)
+checkresiduals(SSES_corn)
+
+plot(yield_ts, col = 'black')
+lines(SSES_corn$fitted, col = 'blue')
+lines(SSES_corn$forecast, col = 'blue')
 
 ```
 
 
 Checking accuracy
 ```{r}
-observed <- soybean[(nobs-n_for+1):nobs, 'yield']
-sarima_scores <- accuracy(sarima_forecast$mean, observed)
-plot(sarima_forecast)
+naive_accuracy <- accuracy(naive_corn$mean, yield_test_ts)
+sma_accuracy <- accuracy(sma_corn$forecast, yield_test_ts)
+ses_accuracy <- accuracy(ses_corn, yield_test_ts)
 
+sarima_accuracy <- accuracy(sarima_forecast, yield_test_ts)
+sarima_accuracy
+
+sses_accuracy <- accuracy(SSES_corn$forecast, yield_test_ts)
+
+
+# collect into one df
+accuracy_df <- bind_rows(
+  as.data.frame(t(naive_accuracy["Test set", c("RMSE", "MAE", "MPE", "MAPE")])),
+  as.data.frame(t(sma_accuracy["Test set", c("RMSE", "MAE", "MPE", "MAPE")])),
+  as.data.frame(t(ses_accuracy["Test set", c("RMSE", "MAE", "MPE", "MAPE")])),
+  as.data.frame(t(sarima_accuracy["Test set", c("RMSE", "MAE", "MPE", "MAPE")])),
+  as.data.frame(t(sses_accuracy["Test set", c("RMSE", "MAE", "MPE", "MAPE")]))
+)
+accuracy_df$Model <- c("Naive", "SMA", "SES", "ARIMA", "SS Exp. Smoothing")
+accuracy_df <- accuracy_df[, c("Model", "RMSE", "MAE", "MPE", "MAPE")]
+
+accuracy_df
 
 ```
 
