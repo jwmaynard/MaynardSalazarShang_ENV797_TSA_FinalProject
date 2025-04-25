@@ -772,7 +772,7 @@ yield_test_ts <- ts(corn_test_data$total_yield, start=corn_test_data$year[1], fr
 
 ACF/PACF
 
-```{r warning=FALSE, message=FALSE,include=FALSE}
+```{r warning=FALSE}
 acf <- autoplot(Acf(yield_ts, lag = 40, plot=FALSE),  
                   main = "ACF")
 
@@ -786,7 +786,7 @@ We see high autocorrelation, mainly relating to the previous one or two observat
 
 Stationary Test
 
-```{r warning=FALSE, message=FALSE,include=FALSE}
+```{r warning=FALSE, message=FALSE}
 MannKendall(yield_ts)
 
 print((adf.test(yield_ts,alternative="stationary")))
@@ -800,7 +800,7 @@ From the MannKendall, the p-value \< 0.05 indicates that there is a trend. From 
 
 We attempt to fit several models: simple moving average, exponential smoothing, ARIMA, and a neural network.
 
-```{r warning=FALSE, message=FALSE,include=FALSE}
+```{r warning=FALSE, message=FALSE}
 
 #simple moving average
 sma_corn <- sma(y = yield_training_ts, h = nobs_test, holdout = FALSE, silent = FALSE)
@@ -818,7 +818,7 @@ autoplot(arima_forecast)+
 
 From the ARIMA residuals, it appears that the more recent residuals display some form of pattern. We try again with only the most recent 50 observations:
 
-```{r warning=FALSE, message=FALSE,include=FALSE}
+```{r warning=FALSE, message=FALSE}
 recent_training_ts <- tail(yield_training_ts, 50)
 recent_arima_corn <- auto.arima(recent_training_ts)
 recent_arima_forecast <- forecast(object = recent_arima_corn, h = nobs_test)
@@ -855,7 +855,9 @@ for (p in 1:6) {
   }
 }
 
+```
 
+```{r}
 autoplot(yield_ts) +
   autolayer(best_nn_forecast$mean)
 ```
