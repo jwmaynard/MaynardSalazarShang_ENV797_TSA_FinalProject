@@ -1,0 +1,247 @@
+---
+title: "soybean scenario generation"
+output: html_document
+date: "2025-04-24"
+---
+
+
+```{r}
+#install.packages('agridat') 
+library(agridat)
+library(lubridate)
+library(ggplot2)
+library(forecast)  
+library(Kendall)
+library(tseries)
+library(outliers)
+library(tidyverse)
+library(cowplot)
+library(smooth)
+library(kableExtra)
+library(readxl)
+library(here)
+library(dplyr)
+library(purrr)
+```
+
+
+```{r}
+soybean <- read_excel("data/HUSSoyb.xls", sheet = 'cleaned')
+colnames(soybean) <- c("Year", "yield")
+
+
+```
+
+
+
+Exploring Data
+```{r}
+
+soybean <- soybean %>% 
+  group_by(Year) %>% 
+  summarise(yield = mean(yield))
+
+
+
+n_for <- round(nrow(soybean) * .10)
+nobs <- nrow(soybean)
+nvar <- ncol(soybean)
+
+
+
+plot <- ggplot(soybean) + 
+  geom_line(aes(x = year, y = yield))
+
+#https://www.ncei.noaa.gov/access/monitoring/climate-at-a-glance/statewide/time-series/11/pdsi/1/0/1975-2023
+data_folder <- "/home/guest/MaynardSalazarShang_ENV797_TSA_FinalProject/data/"
+
+files <- list.files(data_folder, pattern = "i.csv")
+
+for(i in files){
+  df_name <- sub("\\.csv$","",basename(i))
+  tmp <- read_csv(paste0(data_folder, i), skip = 2) %>% 
+                  mutate(Date = ymd(paste0(Date, "01")),
+                         Year = year(Date)) %>% 
+    group_by(Year) %>% 
+    summarise(
+      across(where(is.numeric), ~ mean(.x, na.rm = TRUE)),
+      .groups = "drop"
+    )
+  
+  assign(paste0(df_name, "_annual"), tmp, envir = .GlobalEnv)
+}
+
+files <- list.files(data_folder, pattern = "precipitation.csv")
+
+for(i in files){
+  df_name <- sub("\\.csv$","",basename(i))
+  tmp <- read_csv(paste0(data_folder, i), skip = 3) %>% 
+                  mutate(Date = ymd(paste0(Date, "01")),
+                         Year = year(Date)) %>% 
+    group_by(Year) %>% 
+    summarise(
+      across(where(is.numeric), ~ mean(.x, na.rm = TRUE)),
+      .groups = "drop"
+    )
+  
+  assign(paste0(df_name, "_annual"), tmp, envir = .GlobalEnv)
+}
+
+
+
+```
+
+```{r}
+
+
+## 1) Grab all *_annual data-frames that exist in the workspace
+annual_names <- ls(pattern = "_annual$")          # character vector
+annual_list  <- mget(annual_names)                # named list of data-frames
+
+## 2) Rename each Value column to the data-frame’s name
+annual_list <- imap(annual_list, ~
+  rename(.x, !!.y := Value)                       # .y is the name
+)
+
+## 3) Reduce the list with full_join() and add soybean
+state_values <- reduce(annual_list, inner_join, by = "Year")
+
+final_df <- soybean %>%                           # assumes cols Year, yield
+  rename(yield = yield) %>%                       # change if needed
+  full_join(state_values, by = "Year") %>%        # combine everything
+  arrange(Year)                                   # tidy ordering
+
+# final_df now has: Year, yield, illinois_pdsi_annual, illinois_precipitation_annual, ...
+
+
+```
+
+
+```{r}
+cor(final_df[,2:ncol(final_df)])
+```
+
+
+```{r}
+
+nobs <- nrow(final_df) - n_for
+ncol <- ncol(final_df)
+all_data_ts <- ts((final_df[,2:ncol]), start = c(1975,1), frequency = 1)
+```
+
+
+```{r}
+R = cor(all_data_ts)
+print(R)
+```
+
+```{r}
+horizon=n_for  #we want to forecast two years ahead in monthly steps
+nscen=1000    #number of scenarios to be generated 
+
+X=array(0,c(ncol(all_data_ts),horizon,nscen)) #array where we will store the independently generated scenarios 
+
+
+```
+
+
+
+```{r}
+
+# Need to do a loop over all variables under analysis or repeat process 3 times
+for(i in 1:ncol(all_data_ts)){  
+  
+  # Fit a SARIMA model
+  # Note I am fixing a few parameters regarding the order of the model 
+  # just to help auto.arima() converge faster
+  
+  fit_SARIMA=auto.arima(all_data_ts[,i]) #,max.d=1,max.D=1,max.p=1,max.P=1,max.Q=1) 
+  
+  for_SARIMA=forecast(fit_SARIMA, h=horizon)   #forecast using the fitted SARIMA
+  
+  #Generating scenarios
+  # to generate scenarios we will need standard deviation of residuals
+  # forecast() function does not directly output the standard error we will need to calculate it
+
+  for(t in 1:horizon){
+    # we will use the following expression to manually compute sd
+    sd=(for_SARIMA$upper[t,1] - for_SARIMA$lower[t,1]) / (2 * qnorm(.5 + for_SARIMA$level[1] / 200))
+    
+    # Now that I have mean and standard deviation for time t
+    # I can draw scenarios using the rnorm() function
+    X[i,t,]=rnorm(nscen,mean=for_SARIMA$mean[t],sd=sd)  
+    
+    #note this is done in a loop for all the 24 steps we are forecasting 
+    #and this loop is inside a loop over all HPP inflows
+    
+  } # end t loop
+
+  # remove models just to make sure we start from scratch for the next HPP
+  # remember we are still inside the HPP loop
+  rm(fit_SARIMA, for_SARIMA) 
+                            
+}#end HPP loop
+
+```
+
+Now our array/matrix X has all the draws/scenarios but notice they don't have the same correlation we observed in the historical data.
+```{r}
+#Calculating correlation for s=1
+aux <- X[,,1]
+cor(t(aux))
+```
+
+
+Let's fix that with Cholesky.
+
+```{r}
+U <- chol(R) #that will give upper triangular matrix for Cholesky decomposition
+L <- t(U) #to get lower triangular matrix you need to transpose U, that is what the t() function is doing here
+
+#Creating array Y where we will store correlated scenarios
+Y <- array(0,c(ncol(all_data_ts),horizon,nscen)) 
+
+# Need to use another loop structure to make sure spatial correlation among HPP is present in all scenarios
+for(s in 1:nscen){ 
+  aux <- X[,,s] #creating aux variable simple because X is not a 2x2 matrix, 
+                  #but an array of 3 dimension and we cannot do matrix multiplication with arrays
+  
+  Y[,,s] <- L%*%aux  #recall L is the Cholesky decomposition of our correlation matrix R computed from with historical data
+
+}#end scenario loop
+
+
+#Calculate correlation again
+aux <- Y[,,1]
+cor(t(aux))
+```
+
+```{r}
+
+yield <- 1
+
+#exponentiate back
+for(s in 1:nscen){
+  Y[,,s] <- (Y[,,s])
+}
+
+#getting min and max values of Y to make sure all scenarios will be within the plot limits 
+ymax <- max(Y[yield,,])
+ymin <- min(Y[yield,,])
+plot(Y[yield,,1],col="gray",type="l",ylim=c(ymin,ymax),xaxt='n',xlab="") #plotting first scenario
+#axis(1,at=c(1,13),labels=c("2011","2012"))
+for(s in 2:nscen){
+  lines(Y[yield,,s],col="gray")   #adding lines to the plot corresponding to all scenarios
+} 
+```
+
+
+```{r}
+yield_idx  <- 1                       # or match("yield", colnames(all_data_ts))
+avg_yield  <- rowMeans(Y[yield_idx, , ])   # horizon-length vector
+
+```
+
+
+
+

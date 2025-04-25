@@ -1,0 +1,149 @@
+---
+title: "Soybean_by_State"
+output: html_document
+date: "2025-04-14"
+---
+```{r}
+library(agridat)
+library(dplyr)
+library(forecast)
+library(purrr)
+library(tidyr)
+
+
+library(lubridate)
+library(ggplot2)
+library(forecast)  
+library(Kendall)
+library(tseries)
+library(outliers)
+library(tidyverse)
+library(cowplot)
+library(smooth)
+library(kableExtra)
+
+
+soybean <- nass.soybean
+
+
+```
+
+
+```{r}
+
+soybean_by_state <- soybean %>%
+  group_by(state) %>%
+  filter(max(year) == 2011) %>%
+  ungroup()
+
+soybean_nested <- soybean_by_state %>%
+  group_by(state) %>%
+  nest()
+
+#soybean_nested[soybean_nested$state == 'Alabama',]$data
+
+```
+
+
+```{r}
+forecast_by_state_fn <- function(df_state, test_prop = 0.1) {
+  
+  # Sort by year to ensure correct order
+  df_state <- df_state %>% arrange(year)
+  
+  # How many forecast periods (test set size) do we want?
+  n <- nrow(df_state)
+  n_for <- 9 #round(n * test_prop)
+  
+  # Create train/test splits
+  train_data <- df_state$yield[1:(n - n_for)]
+  test_data  <- df_state$yield[(n - n_for + 1):n]
+  
+  # Build time series for training
+  ts_train <- ts(train_data, start = df_state$year[1], frequency = 1)
+  
+  # Fit a forecasting model 
+  #fit <- auto.arima(ts_train)
+  fit <- nnetar(ts_train,
+                 P = 0,
+                 p = 7)
+  
+  # Forecast out n_for steps
+  fc <- forecast(fit, h = n_for)
+  
+  # We can check accuracy if we like (only if test_data is long enough)
+  if (length(test_data) == length(fc$mean)) {
+    acc <- accuracy(fc$mean, test_data)
+  } else {
+    acc <- NA
+  }
+  
+  # Return a list containing the fitted model, forecast, accuracy, etc.
+  list(
+    model = fit,
+    forecast = fc,
+    accuracy = acc,
+    actuals_test = test_data,               # test set
+    years_test   = df_state$year[(n - n_for + 1):n]  # corresponding years
+  )
+}
+```
+
+```{r}
+#apply function to states
+soybean_forecasts <- soybean_nested %>%
+  mutate(
+    results = map(data, ~ forecast_by_state_fn(.x, test_prop = 0.1))
+  )
+
+soybean_forecasts$results
+```
+
+
+```{r}
+forecast_tidy <- soybean_forecasts %>%
+  mutate(
+    forecast_mean = map(results, ~ as.numeric(.x$forecast$mean)),
+    forecast_year = map(results, ~ .x$years_test)
+  ) %>%
+  select(state, forecast_mean, forecast_year) %>%
+  unnest(cols = c(forecast_mean, forecast_year))
+
+head(forecast_tidy)
+```
+
+```{r}
+aggregate_forecast <- forecast_tidy %>%
+  group_by(forecast_year) %>%
+  summarise(mean_yield = mean(forecast_mean))
+
+```
+
+
+```{r}
+yearly_data <- soybean %>%
+  group_by(year) %>%
+  summarise(avg_yield = mean(yield, na.rm = TRUE)) %>%
+  arrange(year)  # ensure it's sorted by year
+
+tail(yearly_data)
+
+ts_soybean_yearly <- ts(
+  data = yearly_data$avg_yield,
+  start = min(yearly_data$year),
+  frequency = 1
+)
+
+
+ts_soybean_test_agg <- ts(
+  data = aggregate_forecast$mean_yield,
+  start = 2006,
+  frequency = 1
+)
+
+autoplot(ts_soybean_yearly) + 
+  autolayer(ts_soybean_test_agg)
+
+
+```
+
