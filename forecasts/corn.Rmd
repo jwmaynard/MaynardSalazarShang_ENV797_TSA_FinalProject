@@ -73,7 +73,7 @@ print((adf.test(yield_ts,alternative="stationary")))
 diff_yield <- diff(yield_ts)
 print((adf.test(diff_yield,alternative="stationary")))
 
-
+MannKendall(yield_ts)
 ```
 
 Forecasting Simple Techniques
@@ -94,21 +94,21 @@ plot(yield_ts, col = 'black')
 lines(ses_corn$fitted, col = 'blue')
 lines(ses_corn$mean, col = 'blue')
 
-#auto sarima
-sarima_corn <- auto.arima(yield_training_ts)
-print(sarima_corn)
+#auto arima
+arima_corn <- auto.arima(yield_training_ts)
+print(arima_corn)
 
-sarima_forecast <- forecast(object = sarima_corn, h = nobs_test)
-checkresiduals(sarima_forecast)
-autoplot(sarima_forecast)+ylab("Corn Yield")
+arima_forecast <- forecast(object = arima_corn, h = nobs_test)
+checkresiduals(arima_forecast)
+autoplot(arima_forecast)+ylab("Corn Yield")
 
-# sarima on last 50 years only
+# arima on last 50 years only
 recent_training_ts <- tail(yield_training_ts, 50)
-recent_sarima_corn <- auto.arima(recent_training_ts)
-recent_sarima_forecast <- forecast(object = recent_sarima_corn, h = nobs_test)
-checkresiduals(recent_sarima_forecast)
+recent_arima_corn <- auto.arima(recent_training_ts)
+recent_arima_forecast <- forecast(object = recent_arima_corn, h = nobs_test)
+checkresiduals(recent_arima_forecast)
 autoplot(yield_ts)+
-  autolayer(recent_sarima_forecast)+ylab("Corn Yield")
+  autolayer(recent_arima_forecast)+ylab("Corn Yield")
 
 
 ```
@@ -161,15 +161,30 @@ autoplot(yield_ts) +
 
 Checking accuracy
 ```{r}
-naive_accuracy <- accuracy(naive_corn$mean, yield_test_ts)
+
 sma_accuracy <- accuracy(sma_corn$forecast, yield_test_ts)
-ses_accuracy <- accuracy(ses_corn, yield_test_ts)
-
-sarima_accuracy <- accuracy(sarima_forecast, yield_test_ts)
-recent_sarima_accuracy <- accuracy(recent_sarima_forecast, yield_test_ts)
-
-sses_accuracy <- accuracy(SSES_corn$forecast, yield_test_ts)
+ses_accuracy <- accuracy(ses_corn$mean, yield_test_ts)
+arima_accuracy <- accuracy(arima_forecast)
+recent_arima_accuracy <- accuracy(recent_arima_forecast)
 best_nn_accuracy
+
+
+# Combine all scores into one data frame
+all_scores <- rbind(
+  cbind(Model = "SMA", sma_accuracy),
+  cbind(Model = "SES", ses_accuracy),
+  cbind(Model = "ARIMA", arima_accuracy),
+  cbind(Model = "Recent ARIMA", recent_arima_accuracy),
+  cbind(Model = "NN", best_nn_accuracy)
+)
+
+all_scores <- as.data.frame(all_scores)
+numeric_cols <- setdiff(colnames(all_scores), "Model")
+all_scores[numeric_cols] <- lapply(all_scores[numeric_cols], as.numeric)
+kbl(all_scores, 
+    caption = "Forecast Accuracy Across Models",
+    digits = array(5, ncol(all_scores))) %>%
+  kable_styling(full_width = FALSE, position = "center")
 
 
 # collect into one df
@@ -177,13 +192,14 @@ accuracy_df <- bind_rows(
   as.data.frame(t(naive_accuracy["Test set", c("RMSE", "MAE", "MPE", "MAPE")])),
   as.data.frame(t(sma_accuracy["Test set", c("RMSE", "MAE", "MPE", "MAPE")])),
   as.data.frame(t(ses_accuracy["Test set", c("RMSE", "MAE", "MPE", "MAPE")])),
-  as.data.frame(t(sarima_accuracy["Test set", c("RMSE", "MAE", "MPE", "MAPE")])),
+  as.data.frame(t(arima_accuracy["Test set", c("RMSE", "MAE", "MPE", "MAPE")])),
   as.data.frame(t(sses_accuracy["Test set", c("RMSE", "MAE", "MPE", "MAPE")]))
 )
 accuracy_df$Model <- c("Naive", "SMA", "SES", "ARIMA", "SS Exp. Smoothing")
 accuracy_df <- accuracy_df[, c("Model", "RMSE", "MAE", "MPE", "MAPE")]
 
 accuracy_df
+
 
 ```
 
