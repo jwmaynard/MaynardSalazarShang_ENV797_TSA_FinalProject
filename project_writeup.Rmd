@@ -24,13 +24,14 @@ theme_set(theme_classic())
 
 ```
 
-
 ### Purpose
 
+Globally, wheat yields vary \~17% year-to-year while maize yields vary \~22% from the average [1]. Accurately predicting these yields is critical for food security, supply chains, and economic stability, and understanding why they vary can help inform decisions around climate adaptation and resilience. At the most granular level, farms can use yield predictions to optimize resources and planning, while states, regions, or countries might leverage predictions to manage food and inform policy development.
 
 ### Soybean
-Soybean data consists of yearly yields from 1975 to 2023, from the USDA's Commodity Cost and Returns report. According to the USDA, 70% of soybeans grown in the US are used for animal feed, with 15% used for human consumption, and 5% used for biodiesel. Globally, Brazil accounts for 40% of soybean production, while the United States accounts for 28%. In the United States soybeans are planted in May or June, and harvested in September or October. Soybeans are grown in the Midwest and allong the Mississippi River, with Illinois accounting for 16% of production, Iowa accounting for 14%, and both Minnesota and Ohio accounting for 8%.
-\
+
+Soybean data consists of yearly yields from 1975 to 2023, from the USDA's Commodity Cost and Returns report. According to the USDA, 70% of soybeans grown in the US are used for animal feed, with 15% used for human consumption, and 5% used for biodiesel. Globally, Brazil accounts for 40% of soybean production, while the United States accounts for 28%. In the United States soybeans are planted in May or June, and harvested in September or October. Soybeans are grown in the Midwest and along the Mississippi River, with Illinois accounting for 16% of production, Iowa accounting for 14%, and both Minnesota and Ohio accounting for 8%.
+
 #### Data exploration
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
@@ -49,7 +50,6 @@ nvar <- ncol(soybean)
 
 ```
 
-
 ```{r fig.height=3, fig.width=5, message=FALSE, warning=FALSE, echo=FALSE}
 ggplot(soybean) + 
   geom_line(aes(x = Year, y = yield)) + 
@@ -57,7 +57,6 @@ ggplot(soybean) +
   ylab("Yield") +
   theme_classic()
 ```
-
 
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 ts_soybean_full <- ts(soybean$yield,
@@ -98,8 +97,8 @@ plot_grid(ts, pacf, acf,
           nrow = 3)
 
 ```
-When examining the PACF and ACF of our data we observe a cutoff in the PACF and a gradual decline in the ACF, meaning our data exhibits autoregressive characteristics. An autoregressive component and stochastic trend means that yield depends on previous observations and a stochastic term.
 
+When examining the PACF and ACF of our data we observe a cutoff in the PACF and a gradual decline in the ACF, meaning our data exhibits autoregressive characteristics. An autoregressive component and stochastic trend means that yield depends on previous observations and a stochastic term.
 
 #### Models
 
@@ -171,13 +170,10 @@ StructTS_scores <- accuracy(StructTS_forecast$mean, ts_soybean_test)
 
 ```
 
-
-
 #### Scenario generation
 
 \
-To explore effects of different variables on soybean yield we next used scenario generation. Data from NOAA's "Climate at a Glance" state and regional time series was used. This provided data such as precipitation, Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), and Palmer Modified Drought Index (PMDI). We downloaded precipitation and PDSI data from key soybean production states including Illinois, Indiana, Iowa, and Minnesota. We also downloaded country wide precipitation, PDHI, PDSI, and PMDI data. Lastly, we downloaded precipitation and PDSI data from the soybean belt (both area weighted and productivity weighted). This data was aggregated to the year and combined with our soybean yield. Time series, following the same ten percent holdout rule, were created. Correlation between variables was then calculated, and forecast generation was conducted using auto arima and 1000 scenarios. 
-
+To explore effects of different variables on soybean yield we next used scenario generation. Data from NOAA's "Climate at a Glance" state and regional time series was used. This provided data such as precipitation, Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), and Palmer Modified Drought Index (PMDI). We downloaded precipitation and PDSI data from key soybean production states including Illinois, Indiana, Iowa, and Minnesota. We also downloaded country wide precipitation, PDHI, PDSI, and PMDI data. Lastly, we downloaded precipitation and PDSI data from the soybean belt (both area weighted and productivity weighted). This data was aggregated to the year and combined with our soybean yield. Time series, following the same ten percent holdout rule, were created. Correlation between variables was then calculated, and forecast generation was conducted using auto arima and 1000 scenarios.
 
 ```{r include=FALSE, warning=FALSE, message=FALSE,include=FALSE}
 data_folder <- "/home/guest/MaynardSalazarShang_ENV797_TSA_FinalProject/data/"
@@ -216,7 +212,6 @@ for(i in files){
 
 ```
 
-
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 
 #Grab all *_annual data-frames that exist in the workspace
@@ -237,7 +232,6 @@ scenario_df <- soybean %>% #assumes cols Year, yield
   arrange(Year) #tidy ordering
 
 ```
-
 
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 #cor(scenario_df[,2:ncol(scenario_df)])
@@ -318,7 +312,6 @@ for(s in 1:nscen){
 }#end scenario loop
 ```
 
-
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 
 # 1. build a “long” tibble of all scenarios ---------------------------
@@ -383,12 +376,12 @@ scenario_plot <- ggplot() +
          subtitle = "Gray = each scenario; blue band = 10–90% range; red = actual") +
     theme_classic()
 ```
-After visualizing our scenarios, we can see that our 10% to 90% confidence band captures all actual scenarios, with the mean of our scenarios closely following the actual data.
-\
+
+After visualizing our scenarios, we can see that our 10% to 90% confidence band captures all actual scenarios, with the mean of our scenarios closely following the actual data.\
+
 ```{r fig.height=3, fig.width=5, message=FALSE, warning=FALSE, echo=FALSE}
 scenario_plot
 ```
-
 
 ```{r warning=FALSE, message=FALSE,include=FALSE }
 
@@ -416,10 +409,7 @@ autoplot(fc$mean) +
 scenario_scores <- accuracy(fc$mean, ts_soybean_test)
 ```
 
-
-
 #### Accuracy and recommendations
-
 
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 
@@ -447,13 +437,12 @@ forecasts_all_plot_2018_2023 <- autoplot(ts_soybean_full) +
   xlim(c(2018,2023))
   
 ```
+
 \
 
 ```{r fig.height=3, fig.width=5, message=FALSE, warning=FALSE, echo=FALSE}
 forecasts_all_plot_2018_2023
 ```
-
-
 
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 #edit to include all
@@ -474,18 +463,22 @@ scores <- kbl(soy_scores,
 
 
 ```
+
 \
 
 ```{r echo=FALSE}
 scores
 ```
+
 \
-When looking at the error metrics for our various forecasting techniques the exponential smoothing  has the lowest mean absolute percentage error and mean percentage error. Scenario generation is effective in creating scenarios based on possible precipitations and drought indices. 
+When looking at the error metrics for our various forecasting techniques the exponential smoothing has the lowest mean absolute percentage error and mean percentage error. Scenario generation is effective in creating scenarios based on possible precipitations and drought indices.
 
 ### Rye
+
 The dataset used for forecasting rye yields in the United States comes from the U.S. Department of Agriculture and includes annual data from 1866 to 2024. It captures long-term trends in rye production, with yields reported in bushels per acre. This measure reflects the efficiency of production rather than total output. In 2024, the U.S. harvested 402,000 acres of rye, resulting in a total production of 14.8 million bushels. This rich historical dataset provides a solid foundation for modeling and forecasting future yield patterns.
 
 #### Data exploration
+
 ```{r}
 # Set the path to your desktop (Windows example)
 library(here)
@@ -526,7 +519,6 @@ print(rye_ts)
 plot(rye_ts, main = "Rye Yield (Bushels per Acre)", ylab = "Yield", xlab = "Year")
 ```
 
-
 ```{r}
 rye_ACF <- Acf(rye_ts, lag=40, plot=FALSE)
 rye_PACF <- Pacf(rye_ts, lag=40, plot=FALSE)
@@ -535,11 +527,11 @@ autoplot(rye_ACF) + theme_classic()
 autoplot(rye_PACF) + theme_classic()
 ```
 
-
 ```{r}
 rye_ts
 
 ```
+
 ```{r}
 rye_tsc <- na.omit(rye_ts)
 length(rye_tsc)
@@ -557,11 +549,11 @@ beta0_rye <- as.numeric(linear_trend_model_rye$coefficients[1])
 beta1_rye <- as.numeric(linear_trend_model_rye$coefficients[2])
 ```
 
->Across the full time series, rye yields in the U.S. increased at an average rate of 0.15 bushels per acre per year. However, this growth was not consistent over time. Between 1950 and 2000, the rate of increase significantly accelerated, with yields rising by an average of 0.32 bushels per acre per year—more than double the long-term trend.
+> Across the full time series, rye yields in the U.S. increased at an average rate of 0.15 bushels per acre per year. However, this growth was not consistent over time. Between 1950 and 2000, the rate of increase significantly accelerated, with yields rising by an average of 0.32 bushels per acre per year—more than double the long-term trend.
 
 #### Models
-> To improve the accuracy and reliability of our time series forecasting for U.S. rye yields (measured in bushels per acre), we deliberately limited the dataset to include only data from 1920 onward. This decision was made to minimize potential skewness introduced by earlier, less consistent historical data, and to better reflect the agricultural practices, technologies, and climate conditions relevant to the modern era.
 
+> To improve the accuracy and reliability of our time series forecasting for U.S. rye yields (measured in bushels per acre), we deliberately limited the dataset to include only data from 1920 onward. This decision was made to minimize potential skewness introduced by earlier, less consistent historical data, and to better reflect the agricultural practices, technologies, and climate conditions relevant to the modern era.
 
 ```{r}
 # Original cleaned time series
@@ -580,7 +572,6 @@ rye_ts_ny <- window(rye_tsc, start = new_start, end = new_end)
 rye_ts_ny
 ```
 
-
 ```{r}
 nobs <- length(rye_ts_ny)
 t <- c(1:nobs)
@@ -593,9 +584,8 @@ beta0_rye <- as.numeric(linear_trend_model_rye_ny$coefficients[1])
 beta1_rye <- as.numeric(linear_trend_model_rye_ny$coefficients[2])
 ```
 
-
-
 State space exponential smoothing
+
 ```{r}
 #Plotting Data
 
@@ -620,7 +610,9 @@ plot_grid(ts, pacf, acf,
 print((adf.test(rye_ts_ny,alternative="stationary")))
 #P value less than .05 so we fail to reject H0, data has no stochastic trend
 ```
+
 Forecasting Simple Techniques
+
 ```{r}
 naive_rye <- naive(rye_ts_ny, h = 5)
 plot(naive_rye)
@@ -655,8 +647,6 @@ arima_scores <- accuracy(rye_arima_forecast)
 
 ```
 
-
-
 BATS
 
 ```{r}
@@ -687,6 +677,7 @@ NN_scores <- accuracy(NN_forecast)
 ```
 
 State space exponential smoothing
+
 ```{r}
 SSES_rye <- es(rye_ts_ny, model = "ZZZ", h <- 10, holdout = FALSE)
 plot(SSES_rye)
@@ -707,6 +698,7 @@ SS_scores <- accuracy(SS_forecast)
 ```
 
 #### Accuracy and recommendations
+
 ```{r}
 # Combine all scores into one data frame
 all_scores <- rbind(
@@ -735,29 +727,177 @@ kbl(all_scores,
   kable_styling(latex_options = "striped")
 ```
 
+> > Looking at the accuracy results for the four different time series models—ARIMA, TBATS, NNETAR, and StructTS— that were evaluated to forecast rye yields in the U.S. over the next 10 years. We can see that NNETAR stand out. Each model was assessed using standard accuracy metrics, including Mean Error (ME), Root Mean Squared Error (RMSE), Mean Absolute Error (MAE), and Mean Absolute Scaled Error (MASE), among others.
 
->> Looking at the accuracy results for the four different time series models—ARIMA, TBATS, NNETAR, and StructTS— that were evaluated to forecast rye yields in the U.S. over the next 10 years. We can see that NNETAR stand out. Each model was assessed using standard accuracy metrics, including Mean Error (ME), Root Mean Squared Error (RMSE), Mean Absolute Error (MAE), and Mean Absolute Scaled Error (MASE), among others.
+> > The NNETAR model has the lowest RMSE (1.91) and MAE (1.55), indicating superior forecasting accuracy compared to the other models. It also posted the lowest MASE (0.82), reinforcing its relative strength in capturing patterns in the training data. Although its Mean Percentage Error (MPE) was slightly negative (-1.25), this implies a modest tendency to underpredict.
 
->> The NNETAR model has the lowest RMSE (1.91) and MAE (1.55), indicating superior forecasting accuracy compared to the other models. It also posted the lowest MASE (0.82), reinforcing its relative strength in capturing patterns in the training data. Although its Mean Percentage Error (MPE) was slightly negative (-1.25), this implies a modest tendency to underpredict.
-
->> The ARIMA model performed reasonably well, with a slightly higher RMSE (1.99) and MAE (1.66), but it maintained a positive MPE (1.02) and low ACF1 (0.04), suggesting minimal autocorrelation in residuals—an indicator of good model fit.
+> > The ARIMA model performed reasonably well, with a slightly higher RMSE (1.99) and MAE (1.66), but it maintained a positive MPE (1.02) and low ACF1 (0.04), suggesting minimal autocorrelation in residuals—an indicator of good model fit.
 
 > StructTS and TBATS both underperformed relative to NNETAR and ARIMA, with RMSE values exceeding 2.0 and higher MAE and MAPE scores. While TBATS had the highest ME and RMSE, its negative ACF1 value (-0.089) may point to some overfitting or residual autocorrelation that undercuts forecast reliability.
 
-
-
-
 ### Corn
+
+Corn is the largest crop in the US by production. The data consists of state-by-state measurements from 1866-2011 and comes from the National Agricultural Statistics Service (NASS), which in turn is maintained by the USDA.
 
 #### Data exploration
 
+```{r warning=FALSE, message=FALSE,include=FALSE}
+
+corn <- nass.corn
+corn$bushels <- corn$acres * corn$yield
+aggregated_corn <- corn %>%
+  group_by(year) %>%
+  summarise(total_bushels = sum(bushels), total_acreage = sum(acres))
+
+aggregated_corn$total_yield <- aggregated_corn$total_bushels / aggregated_corn$total_acreage
+
+yield_ts <- ts(aggregated_corn$total_yield, start=aggregated_corn$year[1], frequency = 1)
+autoplot(yield_ts)+ylab("Corn Yield (Bushels/Acre)")+ggtitle("US Corn Yield (1866-2011)")
+
+
+acreage_ts <- ts(aggregated_corn$total_acreage, start=aggregated_corn$year[1], frequency = 1)
+autoplot(acreage_ts)
+
+# Reserve ~10% data for testing
+nobs <- nrow(aggregated_corn)
+nobs_test <- nobs %/% 10
+nobs <- nobs - nobs_test
+corn_training_data <- aggregated_corn[1:nobs,]
+corn_test_data <- aggregated_corn[(nobs+1) : nrow(aggregated_corn),]
+
+yield_training_ts <- ts(corn_training_data$total_yield, start=corn_training_data$year[1], frequency = 1)
+yield_test_ts <- ts(corn_test_data$total_yield, start=corn_test_data$year[1], frequency = 1)
+
+```
+
+ACF/PACF
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+acf <- autoplot(Acf(yield_ts, lag = 40, plot=FALSE),  
+                  main = "ACF")
+
+pacf <- autoplot(Pacf(yield_ts, lag = 40, plot=FALSE),  
+                  main = "PACF")
+
+plot_grid(pacf, acf)
+```
+
+We see high autocorrelation, mainly relating to the previous one or two observations from the PACF.
+
+Stationary Test
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+MannKendall(yield_ts)
+
+print((adf.test(yield_ts,alternative="stationary")))
+# p value = 0.99, so we fail to reject H0, data has stochastic trend
+
+```
+
+From the MannKendall, the p-value \< 0.05 indicates that there is a trend. From the ADF test, the data appears to have a unit root and thus the trend appears to be stochastic.
+
 #### Models
+
+We attempt to fit several models: simple moving average, exponential smoothing, ARIMA, and a neural network.
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+
+#simple moving average
+sma_corn <- sma(y = yield_training_ts, h = nobs_test, holdout = FALSE, silent = FALSE)
+
+#simple exponential smoothing
+ses_corn <- ses(y = yield_training_ts, h = nobs_test, holdout = FALSE, silent = FALSE)
+
+# auto arima
+arima_corn <- auto.arima(yield_training_ts)
+arima_forecast <- forecast(object = arima_corn, h = nobs_test)
+checkresiduals(arima_forecast)
+autoplot(arima_forecast)+
+  autolayer(yield_ts)+ylab("Corn Yield")
+```
+
+From the ARIMA residuals, it appears that the more recent residuals display some form of pattern. We try again with only the most recent 50 observations:
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+recent_training_ts <- tail(yield_training_ts, 50)
+recent_arima_corn <- auto.arima(recent_training_ts)
+recent_arima_forecast <- forecast(object = recent_arima_corn, h = nobs_test)
+checkresiduals(recent_arima_forecast)
+autoplot(recent_arima_forecast)+
+  autolayer(yield_ts)+ylab("Corn Yield")
+
+```
+
+While the residuals still do not appear fully random, the forecast appears to more accurately capture the slope of the next few observations.
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+
+# Finding parameters for neural networks
+best_rmse <- Inf
+best_nn_forecast <- NULL
+best_nn_accuracy <- NULL
+best_params <- list()
+
+for (p in 1:6) {
+  for (P in 0:3) {
+
+    nnfit <- nnetar(yield_training_ts, p=p, P=P,  repeats=20)
+    nnfor <- forecast(nnfit, h=nobs_test)
+    acc <- accuracy(nnfor$mean, yield_test_ts)
+    rmse <- acc["Test set", "RMSE"]
+    if (rmse < best_rmse) {
+      best_rmse <- rmse
+      best_nn_forecast <- nnfor
+      best_nn_accuracy <- acc
+      best_params <- list(p=p, P=P)
+    }
+
+  }
+}
+
+
+autoplot(yield_ts) +
+  autolayer(best_nn_forecast$mean)
+```
+
+The neural network captures some of the up and down nature of the data but overall seems to underestimate the gains in corn yields in the 2000s.
 
 #### Accuracy and recommendations
 
+```{r warning=FALSE, message=FALSE,include=FALSE}
+
+sma_accuracy <- accuracy(sma_corn$forecast, yield_test_ts)
+ses_accuracy <- accuracy(ses_corn$mean, yield_test_ts)
+arima_accuracy <- accuracy(arima_forecast)
+recent_arima_accuracy <- accuracy(recent_arima_forecast)
+best_nn_accuracy
+
+
+# Combine all scores into one data frame
+all_scores <- rbind(
+  cbind(Model = "SMA", sma_accuracy),
+  cbind(Model = "SES", ses_accuracy),
+  cbind(Model = "ARIMA", arima_accuracy),
+  cbind(Model = "Recent ARIMA", recent_arima_accuracy),
+  cbind(Model = "NN", best_nn_accuracy)
+)
+
+all_scores <- as.data.frame(all_scores)
+numeric_cols <- setdiff(colnames(all_scores), "Model")
+all_scores[numeric_cols] <- lapply(all_scores[numeric_cols], as.numeric)
+kbl(all_scores, 
+    caption = "Forecast Accuracy Across Models",
+    digits = array(5, ncol(all_scores))) %>%
+  kable_styling(full_width = FALSE, position = "center")
+
+```
+
+Depending on the score in question, either the ARIMA or the ARIMA trained only on more recent values is most accurate. Visually, it would appear that the recent-only ARIMA is a better fit, but it's possible that the longer-term ARIMA may more accurately predict values further out.
+
 #### Sources
 
-- https://www.ncei.noaa.gov/access/monitoring/climate-at-a-glance/regional/time-series
-- https://www.fas.usda.gov/data/production/commodity/2222000
-- https://www.ers.usda.gov/topics/crops/soybeans-and-oil-crops
-- https://www.ers.usda.gov/data-products/commodity-costs-and-returns
+-   <https://doi.org/10.1038/ncomms6989>
+-   <https://www.ncei.noaa.gov/access/monitoring/climate-at-a-glance/regional/time-series>
+-   <https://www.fas.usda.gov/data/production/commodity/2222000>
+-   <https://www.ers.usda.gov/topics/crops/soybeans-and-oil-crops>
+-   <https://www.ers.usda.gov/data-products/commodity-costs-and-returns>
