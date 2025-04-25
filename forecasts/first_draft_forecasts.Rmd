@@ -19,17 +19,25 @@ library(tidyverse)
 library(cowplot)
 library(smooth)
 library(kableExtra)
+library(readxl)
+```
+
+
+```{r}
+soybean <- read_excel("data/HUSSoyb.xls", sheet = 'cleaned')
 
 ```
+
+
 
 Exploring Data
 ```{r}
 
-soybean <- nass.soybean
 
 soybean <- soybean %>% 
   group_by(year) %>% 
   summarise(yield = mean(yield))
+
 
 
 n_for <- round(nrow(soybean) * .10)
@@ -37,31 +45,110 @@ nobs <- nrow(soybean)
 nvar <- ncol(soybean)
 
 
-ts_soybean_train <- ts(soybean$yield[1:(nobs-n_for)],
-                 start = soybean$year[1],
-                 frequency = 1)
-
-ts_soybean_full <- ts(soybean$yield,
-                      start = soybean$year[1],
-                      frequency = 1)
-
-ts_soybean_test <- ts(soybean$yield[(nobs-n_for+1):nrow(soybean)],
-                      start = soybean$year[nobs-n_for+1],
-                      frequency = 1)
 
 plot <- ggplot(soybean) + 
   geom_line(aes(x = year, y = yield))
 ```
 
 
+```{r}
+ts_soybean_full <- ts(soybean$yield,
+                      start = soybean$year[1],
+                      frequency = 1)
+
+ts_soybean_test <- ts(soybean$yield[(nobs-n_for+1):nobs],
+                      start = soybean$year[nobs-n_for+1],
+                      frequency = 1)
+
+ts_soybean_train <- ts(soybean$yield[1:(nobs-n_for)],
+                 start = soybean$year[1],
+                 frequency = 1)
+
+ts_soybean_log_full <- ts(log(soybean$yield),
+                      start = soybean$year[1],
+                      frequency = 1)
+
+ts_soybean_log_test <- ts(log(soybean$yield[(nobs-n_for+1):nobs]),
+                      start = soybean$year[nobs-n_for+1],
+                      frequency = 1)
+
+ts_soybean_log_train <- ts(log(soybean$yield[1:(nobs-n_for)]),
+                 start = soybean$year[1],
+                 frequency = 1)
+
+```
+
+
+
 Plotting Data
 ```{r}
-ts <- autoplot(ts_soybean, plot = FALSE)
+theme_set(theme_classic())
 
-pacf <- autoplot(Pacf(ts_soybean, lag = 40, plot=FALSE),  
+ts <- autoplot(ts_soybean_full, plot = FALSE, ylab = "Yield (bu./acre)")
+
+pacf <- autoplot(Pacf(ts_soybean_full, lag = 40, plot=FALSE),  
+                  main = "PACF of Yield")
+
+acf <- autoplot(Acf(ts_soybean_full, lag = 40, plot=FALSE),  
+                  main = "ACF of Yield")
+
+ggsave("data/soy_ts.png", plot = ts)
+ggsave("data/soy_pacf.png", plot = pacf)
+ggsave("data/soy_acf.png", plot = acf)
+
+plot_grid(ts, pacf, acf,
+          nrow = 3)
+```
+
+
+
+Stationary Test
+```{r}
+print((adf.test(ts_soybean_full,alternative="stationary")))
+#P value greater than .05 so we faill to reject H0, data has stochastic trend
+
+```
+
+
+```{r}
+
+t <- c(1:nobs)
+
+linear_trend_model <- lm(ts_soybean_full ~ t )
+beta0 <- as.numeric(linear_trend_model$coefficients[1])
+beta1 <- as.numeric(linear_trend_model$coefficients[2])
+
+linear_trend <- beta0 + beta1 * t
+ts_linear <- ts(linear_trend, start = 1924, frequency = 1)
+
+detrend <- soybean$yield - linear_trend
+ts_detrend <- ts(detrend, start = 1924, frequency = 1)
+
+autoplot(ts_soybean_full) +
+    autolayer(ts_linear) +
+    autolayer(ts_detrend)
+```
+
+
+```{r}
+ts_soybean_detrend_train <- ts(detrend[1:(nobs-n_for)],
+                 start = soybean$year[1],
+                 frequency = 1)
+
+ts_soybean_detrend_test <- ts(detrend[(nobs-n_for+1):length(detrend)],
+                      start = soybean$year[nobs-n_for+1],
+                      frequency = 1)
+
+```
+
+
+```{r}
+ts <- autoplot(ts_detrend, plot = FALSE)
+
+pacf <- autoplot(Pacf(ts_detrend, lag = 40, plot=FALSE),  
                   main = "PACF")
 
-acf <- autoplot(Acf(ts_soybean, lag = 40, plot=FALSE),  
+acf <- autoplot(Acf(ts_detrend, lag = 40, plot=FALSE),  
                   main = "ACF")
 
 plot_grid(ts, pacf, acf,
@@ -69,46 +156,28 @@ plot_grid(ts, pacf, acf,
 )
 ```
 
-Stationary Test
-```{r}
-print((adf.test(ts_soybean,alternative="stationary")))
-#P value less than .05 so we fail to reject H0, data has no stochastic trend
-
-```
 
 Forecasting Simple Techniques
 ```{r}
-naive_soy <- naive(ts_soybean, h = 5)
-plot(naive_soy)
 
 #simple moving average
-sma_soy <- sma(y = ts_soybean, h = 5, holdout = FALSE, silent = FALSE)
-plot(sma_soy)
+sma_soy <- sma(y = ts_soybean_full, h = n_for, holdout = FALSE, silent = FALSE)
 
 #simple exponential smoothing
-ses_soy <- ses(y = ts_soybean, h = 5, holdout = FALSE, silent = FALSE)
-
-plot(ts_soybean, col = 'black')
-lines(ses_soy$fitted, col = 'blue')
+ses_soy <- ses(y = ts_soybean_full, h = n_for, holdout = FALSE, silent = FALSE)
 
 #auto sarima
 sarima_soy <- auto.arima(ts_soybean_train)
-print(sarima_soy)
+sarima_forecast <- forecast(object = sarima_soy, h = n_for)
 
-sarima_forecast <- forecast(object = sarima_soy, h = 5)
 checkresiduals(sarima_forecast)
-autoplot(sarima_forecast) +
-  autolayer(ts_soybean_test)
+sarima_residuals <- autoplot(sarima_forecast$residuals, ylab = "", main = "Residuals")
+
 
 sarima_scores <- accuracy(sarima_forecast$mean, ts_soybean_test)
+sma_scores <- accuracy(sma_soy$forecast, ts_soybean_test)
+ses_scores <- accuracy(ses_soy$mean, ts_soybean_test)
 
-#edit to include all
-kbl(sarima_scores, 
-      caption = "Forecast Accuracy for SARIMA",
-      digits = array(5,ncol(sarima_scores))) %>%
-  kable_styling(full_width = FALSE, position = "center") %>%
-  #highlight model with lowest RMSE
-  kable_styling(latex_options="striped", stripe_index = which.min(sarima_scores[,"RMSE"]))
 
 
 ```
@@ -120,48 +189,87 @@ BATS
 TBATS_fit <- tbats(ts_soybean_train)
 TBATS_forecast <- forecast(TBATS_fit, h = n_for)
 
-autoplot(TBATS_forecast) + 
-  autolayer((ts_soybean_test))
+soy_bats <- autoplot(TBATS_forecast, ylab = "Yield") + 
+  autolayer(ts_soybean_test, series = "Test Dataset")
 
 TBATS_scores <- accuracy(TBATS_forecast$mean, ts_soybean_test)
 
 ```
 
+
+
+
 Neural Network
 
 ```{r}
+
 NN_fit <- nnetar(ts_soybean_train,
-                 P = 2,
-                 p = 2)
+                 P = 0,
+                 p = 5)
                 
 NN_forecast <- forecast(NN_fit,
                         h = n_for) 
 
-autoplot(NN_forecast) + 
-  autolayer(ts_soybean_test)
-
-ts_soybean_train
-
+NN_scores <- accuracy(NN_forecast$mean, ts_soybean_test)
 
 ```
 
 
 State space exponential smoothing
 ```{r}
-SSES_soy <- es(ts_soybean_train, model = "ZZZ", h = n_for, holdout = FALSE)
-plot(SSES_soy)
-checkresiduals(SSES_soy)
-SSES_soy$model
+SSES_fit <- es(ts_soybean_train, model = "ZZZ", h = n_for, holdout = FALSE)
+SSES_forecast <- forecast(SSES_fit, h = n_for)
 
-SS_fit <- StructTS(ts_soybean_train,
+checkresiduals(SSES_fit)
+
+SSES_scores <- accuracy(SSES_forecast, ts_soybean_test)
+
+
+
+StructTS_fit <- StructTS(ts_soybean_train,
                    type = "trend")
-checkresiduals(SS_fit)
+StructTS_forecast <- forecast(StructTS_fit, h = n_for)
 
-SS_forecast <- forecast(SS_fit, h = n_for)
+checkresiduals(StructTS_fit)
 
-autoplot(SS_forecast) +
-  autolayer(ts_soybean_test)
+StructTS_scores <- accuracy(StructTS_forecast$mean, ts_soybean_test)
 
 ```
+
+```{r}
+
+autoplot(ts_soybean_train) +
+  autolayer(sma_soy$forecast, series = "Simple Moving Average") +
+  autolayer(ses_soy$mean, series = "Simple Exponential Smoothing") +
+  autolayer(sarima_forecast$mean, series = "ARIMA(3,1,0)") +
+  autolayer(TBATS_forecast$mean, series = "TBATS") +
+  autolayer(NN_forecast$mean, series = "NNAR(5,3)") +
+  autolayer(SSES_forecast$mean, series = "ETS(AAN)") +
+  autolayer(StructTS_forecast$mean, series = "Structual TS")
+  
+```
+
+
+
+```{r}
+#edit to include all
+#create data frame
+soy_scores <- as.data.frame(rbind(NN_scores, sarima_scores, StructTS_scores, TBATS_scores, SSES_scores, ses_scores, sma_scores))
+row.names(soy_scores) <- c("NNAR(5,3)", "ARIMA(3,1,0)","Structural TS", "TBATS", "ETS(AAN)", "SES", "SMA")
+
+#choose model with lowest RMSE
+best_model_index <- which.min(soy_scores[,"RMSE"])
+cat("The best model by RMSE is:", row.names(soy_scores[best_model_index,]))       
+
+scores <- kbl(soy_scores, 
+      caption = "Forecast Accuracy for Soybean Models",
+      digits = array(5,ncol(soy_scores))) %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  #highlight model with lowest RMSE
+  kable_styling(latex_options="striped", stripe_index = which.min(soy_scores[,"RMSE"]))
+
+
+```
+
 
 

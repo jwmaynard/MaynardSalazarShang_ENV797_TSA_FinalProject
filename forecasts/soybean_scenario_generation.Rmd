@@ -47,6 +47,17 @@ n_for <- round(nrow(soybean) * .10)
 nobs <- nrow(soybean)
 nvar <- ncol(soybean)
 
+ts_soybean_full <- ts(soybean$yield,
+                      start = soybean$Year[1],
+                      frequency = 1)
+
+ts_soybean_test <- ts(soybean$yield[(nobs-n_for+1):nobs],
+                      start = soybean$Year[nobs-n_for+1],
+                      frequency = 1)
+
+ts_soybean_train <- ts(soybean$yield[1:(nobs-n_for)],
+                 start = soybean$Year[1],
+                 frequency = 1)
 
 
 plot <- ggplot(soybean) + 
@@ -124,14 +135,19 @@ cor(final_df[,2:ncol(final_df)])
 
 ```{r}
 
-nobs <- nrow(final_df) - n_for
+#nobs <- nrow(final_df) - n_for
+nobs <- nrow(final_df)
 ncol <- ncol(final_df)
 all_data_ts <- ts((final_df[,2:ncol]), start = c(1975,1), frequency = 1)
+
+all_data_ts_train <- ts((final_df[1:(nobs-n_for),2:ncol]), start = c(1975,1), frequency = 1)
+
+all_data_ts_test <- ts((final_df[(nobs-n_for+1):nobs,2:ncol]), start = final_df$Year[nobs-n_for+1], frequency = 1)
 ```
 
 
 ```{r}
-R = cor(all_data_ts)
+R = cor(all_data_ts_train)
 print(R)
 ```
 
@@ -139,7 +155,7 @@ print(R)
 horizon=n_for  #we want to forecast two years ahead in monthly steps
 nscen=1000    #number of scenarios to be generated 
 
-X=array(0,c(ncol(all_data_ts),horizon,nscen)) #array where we will store the independently generated scenarios 
+X=array(0,c(ncol(all_data_ts_train),horizon,nscen)) #array where we will store the independently generated scenarios 
 
 
 ```
@@ -149,13 +165,13 @@ X=array(0,c(ncol(all_data_ts),horizon,nscen)) #array where we will store the ind
 ```{r}
 
 # Need to do a loop over all variables under analysis or repeat process 3 times
-for(i in 1:ncol(all_data_ts)){  
+for(i in 1:ncol(all_data_ts_train)){  
   
   # Fit a SARIMA model
   # Note I am fixing a few parameters regarding the order of the model 
   # just to help auto.arima() converge faster
   
-  fit_SARIMA=auto.arima(all_data_ts[,i]) #,max.d=1,max.D=1,max.p=1,max.P=1,max.Q=1) 
+  fit_SARIMA=auto.arima(all_data_ts_train[,i]) #,max.d=1,max.D=1,max.p=1,max.P=1,max.Q=1) 
   
   for_SARIMA=forecast(fit_SARIMA, h=horizon)   #forecast using the fitted SARIMA
   
@@ -235,13 +251,113 @@ for(s in 2:nscen){
 } 
 ```
 
-
+Compare scenarios generated with actual data
 ```{r}
-yield_idx  <- 1                       # or match("yield", colnames(all_data_ts))
-avg_yield  <- rowMeans(Y[yield_idx, , ])   # horizon-length vector
+ts_scen <- ts(Y[yield,,1],
+                      start = soybean$Year[nobs-n_for+1],
+                      frequency = 1)
 
+autoplot(ts_soybean_train) +
+  autolayer(ts_scen) +
+  autolayer(ts_soybean_test)
 ```
 
 
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# 1. build a “long” tibble of all scenarios ---------------------------
+
+# the vector of years in your test period:
+test_years <- soybean$Year[(nobs-n_for+1):nobs]
+
+# assemble
+scenario_df <- 
+  expand.grid(
+    Year     = test_years,
+    scenario = seq_len(nscen)
+  ) %>% 
+  arrange(Year, scenario) %>% 
+  mutate(
+    value = as.vector(t(Y[yield, , ]))
+  )
+
+# 2. compute summary bands (e.g. median, 10th/90th pct) ------------------
+
+fan_df <- scenario_df %>%
+  group_by(Year) %>%
+  summarise(
+    p50   = median(value),
+    p10   = quantile(value, .10),
+    p90   = quantile(value, .90),
+    .groups = "drop"
+  )
+
+# 3. pull out the actual test data --------------------------------------
+
+actual_df <- 
+  tibble(
+    Year  = test_years,
+    actual = as.numeric(ts_soybean_test)
+  )
+
+# 4. spaghetti + fan + actual overlay -----------------------------------
+
+ggplot() +
+  # a) light gray spaghetti
+  geom_line(data = scenario_df,
+            aes(Year, value, group = scenario),
+            color = "gray60", alpha = 0.3) +
+  # b) fan‐chart ribbon
+  geom_ribbon(data = fan_df,
+              aes(Year, ymin = p10, ymax = p90),
+              fill = "steelblue", alpha = 0.25) +
+  # c) median line
+  geom_line(data = fan_df,
+            aes(Year, p50),
+            color = "steelblue", size = 1) +
+  # d) actual held‐out
+  geom_line(data = actual_df,
+            aes(Year, actual),
+            color = "firebrick", size = 1) +
+  geom_point(data = actual_df,
+             aes(Year, actual),
+             color = "firebrick", size = 2) +
+  labs(title    = "Soybean Yield: scenarios vs actual",
+       y        = "Yield",
+       subtitle = "Gray = each scenario; blue band = 10–90% range; red = actual") +
+  theme_classic()
+
+```
+
+```{r}
+library(forecast)
+
+fc <- list(
+  model  = "Simulated",
+  level  = c(10, 90),
+  mean   = ts(fan_df$p50,
+              start = start(ts_soybean_test),
+              frequency = frequency(ts_soybean_test)),
+  lower  = ts(cbind(fan_df$p10, fan_df$p10),  # shape: time × n_levels
+              start = start(ts_soybean_test),
+              frequency = frequency(ts_soybean_test)),
+  upper  = ts(cbind(fan_df$p90, fan_df$p90),
+              start = start(ts_soybean_test),
+              frequency = frequency(ts_soybean_test)),
+  x      = ts_soybean_train,
+  series = "Soybean yield",
+  method = "Cholesky‐sim"
+)
+
+autoplot(fc$mean) +
+  autolayer(ts_soybean_test, series = "Actual") +
+  labs(title = "Simulated soybean forecasts vs actuals")
+
+accuracy(fc$mean, ts_soybean_test)
+
+```
 
 

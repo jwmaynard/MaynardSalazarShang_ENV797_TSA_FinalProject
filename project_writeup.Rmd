@@ -1,0 +1,489 @@
+---
+title: "project_writeup"
+author: "Pablo Salazar, Ellie Shang, Justin Maynard"
+date: "2025-04-25"
+output: pdf_document
+---
+
+```{r include=FALSE}
+#Import libraries
+library(agridat)
+library(lubridate)
+library(ggplot2)
+library(forecast)  
+library(Kendall)
+library(tseries)
+library(outliers)
+library(tidyverse)
+library(cowplot)
+library(smooth)
+library(kableExtra)
+library(readxl)
+theme_set(theme_classic())
+
+```
+
+
+### Purpose
+
+### Soybean
+
+#### Data exploration
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+soybean <- read_excel("data/HUSSoyb.xls", sheet = 'cleaned')
+colnames(soybean) <- c("Year", "yield")
+
+soybean <- soybean %>% 
+  group_by(Year) %>% 
+  summarise(yield = mean(yield))
+
+
+
+nfor_soy <- round(nrow(soybean) * .10)
+nobs_soy <- nrow(soybean)
+nvar <- ncol(soybean)
+
+```
+
+Write about data here.
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+ggplot(soybean) + 
+  geom_line(aes(x = Year, y = yield)) + 
+  xlab("Year") +
+  ylab("Yield") +
+  theme_classic()
+```
+
+```{r, warning=FALSE, message=FALSE,include=FALSE}
+ts_soybean_full <- ts(soybean$yield,
+                      start = soybean$Year[1],
+                      frequency = 1)
+
+ts_soybean_test <- ts(soybean$yield[(nobs_soy-nfor_soy+1):nobs_soy],
+                      start = soybean$Year[nobs_soy-nfor_soy+1],
+                      frequency = 1)
+
+ts_soybean_train <- ts(soybean$yield[1:(nobs_soy-nfor_soy)],
+                 start = soybean$Year[1],
+                 frequency = 1)
+
+ts <- autoplot(ts_soybean_full, plot = FALSE, ylab = "Yield (bu./acre)")
+
+pacf <- autoplot(Pacf(ts_soybean_full, lag = 40, plot=FALSE),  
+                  main = "PACF of Yield")
+
+acf <- autoplot(Acf(ts_soybean_full, lag = 40, plot=FALSE),  
+                  main = "ACF of Yield")
+
+
+```
+
+Write about PACF/ACF
+
+```{r}
+plot_grid(ts, pacf, acf,
+          nrow = 3)
+
+```
+
+Write about stationary test
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+print((adf.test(ts_soybean_full,alternative="stationary")))
+#P value greater than .05 so we faill to reject H0, data has stochastic trend
+```
+
+
+#### Models
+
+Simple and ARIMA
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+
+#simple moving average
+sma_soy <- sma(y = ts_soybean_train, h = nfor_soy, holdout = FALSE, silent = FALSE)
+
+#simple exponential smoothing
+ses_soy <- ses(y = ts_soybean_train, h = nfor_soy, holdout = FALSE, silent = FALSE)
+
+#auto sarima
+sarima_soy <- auto.arima(ts_soybean_train)
+sarima_forecast <- forecast(object = sarima_soy, h = nfor_soy)
+
+checkresiduals(sarima_forecast)
+sarima_residuals <- autoplot(sarima_forecast$residuals, ylab = "", main = "Residuals")
+
+
+sarima_scores <- accuracy(sarima_forecast$mean, ts_soybean_test)
+sma_scores <- accuracy(sma_soy$forecast, ts_soybean_test)
+ses_scores <- accuracy(ses_soy$mean, ts_soybean_test)
+
+
+
+```
+
+
+BATS
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+TBATS_fit <- tbats(ts_soybean_train)
+TBATS_forecast <- forecast(TBATS_fit, h = nfor_soy)
+
+TBATS_scores <- accuracy(TBATS_forecast$mean, ts_soybean_test)
+
+```
+
+Neural Network
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+
+NN_fit <- nnetar(ts_soybean_train,
+                 P = 0,
+                 p = 5)
+                
+Nnfor_soyecast <- forecast(NN_fit,
+                        h = nfor_soy) 
+
+NN_scores <- accuracy(Nnfor_soyecast$mean, ts_soybean_test)
+
+```
+
+
+State space exponential smoothing
+```{r warning=FALSE, message=FALSE,include=FALSE}
+SSES_fit <- es(ts_soybean_train, model = "ZZZ", h = nfor_soy, holdout = FALSE)
+SSES_forecast <- forecast(SSES_fit, h = nfor_soy)
+
+checkresiduals(SSES_fit)
+
+SSES_scores <- accuracy(SSES_forecast, ts_soybean_test)
+
+
+
+StructTS_fit <- StructTS(ts_soybean_train,
+                   type = "trend")
+StructTS_forecast <- forecast(StructTS_fit, h = nfor_soy)
+
+checkresiduals(StructTS_fit)
+
+StructTS_scores <- accuracy(StructTS_forecast$mean, ts_soybean_test)
+
+```
+
+
+
+
+#### Scenario generation
+
+```{r include=FALSE warning=FALSE, message=FALSE,include=FALSE}
+data_folder <- "/home/guest/MaynardSalazarShang_ENV797_TSA_FinalProject/data/"
+
+files <- list.files(data_folder, pattern = "i.csv")
+
+for(i in files){
+  df_name <- sub("\\.csv$","",basename(i))
+  tmp <- read_csv(paste0(data_folder, i), skip = 2) %>% 
+                  mutate(Date = ymd(paste0(Date, "01")),
+                         Year = year(Date)) %>% 
+    group_by(Year) %>% 
+    summarise(
+      across(where(is.numeric), ~ mean(.x, na.rm = TRUE)),
+      .groups = "drop"
+    )
+  
+  assign(paste0(df_name, "_annual"), tmp, envir = .GlobalEnv)
+}
+
+files <- list.files(data_folder, pattern = "precipitation.csv")
+
+for(i in files){
+  df_name <- sub("\\.csv$","",basename(i))
+  tmp <- read_csv(paste0(data_folder, i), skip = 3) %>% 
+                  mutate(Date = ymd(paste0(Date, "01")),
+                         Year = year(Date)) %>% 
+    group_by(Year) %>% 
+    summarise(
+      across(where(is.numeric), ~ mean(.x, na.rm = TRUE)),
+      .groups = "drop"
+    )
+  
+  assign(paste0(df_name, "_annual"), tmp, envir = .GlobalEnv)
+}
+
+```
+
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+
+#Grab all *_annual data-frames that exist in the workspace
+annual_names <- ls(pattern = "_annual$")  # character vector
+annual_list  <- mget(annual_names) # named list of data-frames
+
+#Rename each Value column to the data-frame’s name
+annual_list <- imap(annual_list, ~
+  rename(.x, !!.y := Value) # .y is the name
+)
+
+#Reduce the list with full_join() and add soybean
+state_values <- reduce(annual_list, inner_join, by = "Year")
+
+scenario_df <- soybean %>% #assumes cols Year, yield
+  rename(yield = yield) %>%  #change if needed
+  full_join(state_values, by = "Year") %>% #combine everything
+  arrange(Year) #tidy ordering
+
+```
+
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+#cor(scenario_df[,2:ncol(scenario_df)])
+ncol_soy <- ncol(final_df)
+
+
+scenario_ts <- ts((scenario_df[,2:ncol_soy]), start = c(1975,1), frequency = 1)
+
+scenario_ts_train <- ts((scenario_df[1:(nobs-n_for),2:ncol_soy]), start = c(1975,1), frequency = 1)
+
+scenario_ts_test <- ts((scenario_df[(nobs-n_for+1):nobs,2:ncol_soy]), start = scenario_df$Year[nobs-n_for+1], frequency = 1)
+
+
+R = cor(scenario_ts_train)
+
+
+horizon=n_for  #we want to forecast two years ahead in monthly steps
+nscen=1000    #number of scenarios to be generated 
+
+X=array(0,c(ncol(scenario_ts_train),horizon,nscen)) #array where we will store the independently generated scenarios 
+
+
+```
+
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+
+# Need to do a loop over all variables under analysis or repeat process 3 times
+for(i in 1:ncol(scenario_ts_train)){  
+  
+  # Fit a SARIMA model
+  # Note I am fixing a few parameters regarding the order of the model 
+  # just to help auto.arima() converge faster
+  
+  fit_SARIMA=auto.arima(scenario_ts_train[,i]) #,max.d=1,max.D=1,max.p=1,max.P=1,max.Q=1) 
+  
+  for_SARIMA=forecast(fit_SARIMA, h=horizon)   #forecast using the fitted SARIMA
+  
+  #Generating scenarios
+  # to generate scenarios we will need standard deviation of residuals
+  # forecast() function does not directly output the standard error we will need to calculate it
+
+  for(t in 1:horizon){
+    # we will use the following expression to manually compute sd
+    sd=(for_SARIMA$upper[t,1] - for_SARIMA$lower[t,1]) / (2 * qnorm(.5 + for_SARIMA$level[1] / 200))
+    
+    # Now that I have mean and standard deviation for time t
+    # I can draw scenarios using the rnorm() function
+    X[i,t,]=rnorm(nscen,mean=for_SARIMA$mean[t],sd=sd)  
+    
+    #note this is done in a loop for all the 24 steps we are forecasting 
+    #and this loop is inside a loop over all HPP inflows
+    
+  } # end t loop
+
+  # remove models just to make sure we start from scratch for the next HPP
+  # remember we are still inside the HPP loop
+  rm(fit_SARIMA, for_SARIMA) 
+                            
+}#end HPP loop
+
+```
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+
+U <- chol(R) #that will give upper triangular matrix for Cholesky decomposition
+L <- t(U) #to get lower triangular matrix you need to transpose U, that is what the t() function is doing here
+
+#Creating array Y where we will store correlated scenarios
+Y <- array(0,c(ncol(scenario_ts),horizon,nscen)) 
+
+# Need to use another loop structure to make sure spatial correlation among HPP is present in all scenarios
+for(s in 1:nscen){ 
+  aux <- X[,,s] #creating aux variable simple because X is not a 2x2 matrix, 
+                  #but an array of 3 dimension and we cannot do matrix multiplication with arrays
+  
+  Y[,,s] <- L%*%aux  #recall L is the Cholesky decomposition of our correlation matrix R computed from with historical data
+
+}#end scenario loop
+```
+
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+
+# 1. build a “long” tibble of all scenarios ---------------------------
+
+# the vector of years in your test period:
+yield <- 1
+test_years <- soybean$Year[(nobs-n_for+1):nobs]
+
+# assemble
+scenario_df <- 
+  expand.grid(
+    Year     = test_years,
+    scenario = seq_len(nscen)
+  ) %>% 
+  arrange(Year, scenario) %>% 
+  mutate(
+    value = as.vector(t(Y[yield, , ]))
+  )
+
+# 2. compute summary bands (e.g. median, 10th/90th pct) ------------------
+
+fan_df <- scenario_df %>%
+  group_by(Year) %>%
+  summarise(
+    p50   = median(value),
+    p10   = quantile(value, .10),
+    p90   = quantile(value, .90),
+    .groups = "drop"
+  )
+
+# 3. pull out the actual test data --------------------------------------
+
+actual_df <- 
+  tibble(
+    Year  = test_years,
+    actual = as.numeric(ts_soybean_test)
+  )
+
+# 4. spaghetti + fan + actual overlay -----------------------------------
+scenario_plot <- ggplot() +
+    # a) light gray spaghetti
+    geom_line(data = scenario_df,
+              aes(Year, value, group = scenario),
+              color = "gray60", alpha = 0.3) +
+    # b) fan‐chart ribbon
+    geom_ribbon(data = fan_df,
+                aes(Year, ymin = p10, ymax = p90),
+                fill = "steelblue", alpha = 0.25) +
+    # c) median line
+    geom_line(data = fan_df,
+              aes(Year, p50),
+              color = "steelblue", size = 1) +
+    # d) actual held‐out
+    geom_line(data = actual_df,
+              aes(Year, actual),
+              color = "firebrick", size = 1) +
+    geom_point(data = actual_df,
+               aes(Year, actual),
+               color = "firebrick", size = 2) +
+    labs(title    = "Soybean Yield: scenarios vs actual",
+         y        = "Yield",
+         subtitle = "Gray = each scenario; blue band = 10–90% range; red = actual") +
+    theme_classic()
+```
+
+```{r}
+scenario_plot
+```
+
+
+```{r warning=FALSE, message=FALSE,include=FALSE }
+
+fc <- list(
+  model  = "Simulated",
+  level  = c(10, 90),
+  mean   = ts(fan_df$p50,
+              start = start(ts_soybean_test),
+              frequency = frequency(ts_soybean_test)),
+  lower  = ts(cbind(fan_df$p10, fan_df$p10),  # shape: time × n_levels
+              start = start(ts_soybean_test),
+              frequency = frequency(ts_soybean_test)),
+  upper  = ts(cbind(fan_df$p90, fan_df$p90),
+              start = start(ts_soybean_test),
+              frequency = frequency(ts_soybean_test)),
+  x      = ts_soybean_train,
+  series = "Soybean yield",
+  method = "Cholesky‐sim"
+)
+
+autoplot(fc$mean) +
+  autolayer(ts_soybean_test, series = "Actual") +
+  labs(title = "Simulated soybean forecasts vs actuals")
+
+scenario_scores <- accuracy(fc$mean, ts_soybean_test)
+```
+
+
+
+#### Accuracy and recommendations
+
+
+```{r}
+
+autoplot(ts_soybean_full) +
+  autolayer(sma_soy$forecast, series = "Simple Moving Average") +
+  autolayer(ses_soy$mean, series = "Simple Exponential Smoothing") +
+  autolayer(sarima_forecast$mean, series = "ARIMA(3,1,0)") +
+  autolayer(TBATS_forecast$mean, series = "TBATS") +
+  autolayer(Nnfor_soyecast$mean, series = "NNAR(5,3)") +
+  autolayer(SSES_forecast$mean, series = "ETS(AAN)") +
+  autolayer(StructTS_forecast$mean, series = "Structual TS") +
+  autolayer(fc$mean, series = "Scenarios Mean") +
+  ylab("Yield (bu./acre)") 
+
+autoplot(ts_soybean_full) +
+  autolayer(sma_soy$forecast, series = "Simple Moving Average") +
+  autolayer(ses_soy$mean, series = "Simple Exponential Smoothing") +
+  autolayer(sarima_forecast$mean, series = "ARIMA(3,1,0)") +
+  autolayer(TBATS_forecast$mean, series = "TBATS") +
+  autolayer(Nnfor_soyecast$mean, series = "NNAR(5,3)") +
+  autolayer(SSES_forecast$mean, series = "ETS(AAN)") +
+  autolayer(StructTS_forecast$mean, series = "Structual TS") +
+  autolayer(fc$mean, series = "Scenarios Mean") +
+  ylab("Yield (bu./acre)") +
+  xlim(c(2018,2023))
+  
+```
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
+#edit to include all
+#create data frame
+soy_scores <- as.data.frame(rbind(NN_scores, sarima_scores, StructTS_scores, TBATS_scores, SSES_scores, ses_scores, sma_scores, scenario_scores))
+row.names(soy_scores) <- c("NNAR(5,3)", "ARIMA(3,1,0)","Structural TS", "TBATS", "ETS(AAN)", "SES", "SMA", "Scenarios Mean")
+
+#choose model with lowest RMSE
+best_model_index <- which.min(soy_scores[,"RMSE"])
+cat("The best model by RMSE is:", row.names(soy_scores[best_model_index,]))       
+
+scores <- kbl(soy_scores, 
+      caption = "Forecast Accuracy for Soybean Models",
+      digits = array(5,ncol(soy_scores))) %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  #highlight model with lowest RMSE
+  kable_styling(latex_options="striped", stripe_index = which.min(soy_scores[,"RMSE"]))
+
+
+```
+
+
+```{r}
+scores
+```
+
+
+### Rye
+
+#### Data exploration
+
+#### Models
+
+#### Accuracy and recommendations
+
+### Corn
+
+#### Data exploration
+
+#### Models
+
+#### Accuracy and recommendations
