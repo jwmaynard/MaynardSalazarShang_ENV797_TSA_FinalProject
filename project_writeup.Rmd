@@ -92,7 +92,7 @@ acf <- autoplot(Acf(ts_soybean_full, lag = 40, plot=FALSE),
 
 ```
 
-```{rr fig.height=3, fig.width=5, message=FALSE, warning=FALSE, echo=FALSE}
+```{r fig.height=3, fig.width=5, message=FALSE, warning=FALSE, echo=FALSE}
 plot_grid(ts, pacf, acf,
           nrow = 3)
 
@@ -866,7 +866,7 @@ The neural network captures some of the up and down nature of the data but overa
 
 #### Accuracy and recommendations
 
-```{r warning=FALSE, message=FALSE,include=FALSE}
+```{r warning=FALSE, message=FALSE}
 
 sma_accuracy <- accuracy(sma_corn$forecast, yield_test_ts)
 ses_accuracy <- accuracy(ses_corn$mean, yield_test_ts)
