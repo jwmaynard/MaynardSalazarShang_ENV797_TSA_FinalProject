@@ -20,17 +20,20 @@ library(smooth)
 library(kableExtra)
 library(readxl)
 theme_set(theme_classic())
+#tinytex::reinstall_tinytex(repository = "illinois")
 
 ```
 
 
 ### Purpose
 
-### Soybean
 
+### Soybean
+Soybean data consists of yearly yields from 1975 to 2023, from the USDA's Commodity Cost and Returns report. According to the USDA, 70% of soybeans grown in the US are used for animal feed, with 15% used for human consumption, and 5% used for biodiesel. Globally, Brazil accounts for 40% of soybean production, while the United States accounts for 28%. In the United States soybeans are planted in May or June, and harvested in September or October. Soybeans are grown in the Midwest and allong the Mississippi River, with Illinois accounting for 16% of production, Iowa accounting for 14%, and both Minnesota and Ohio accounting for 8%.
+\
 #### Data exploration
 
-```{r warning=FALSE, message=FALSE,include=FALSE}
+```{r message=FALSE, warning=FALSE, include=FALSE}
 soybean <- read_excel("data/HUSSoyb.xls", sheet = 'cleaned')
 colnames(soybean) <- c("Year", "yield")
 
@@ -46,9 +49,8 @@ nvar <- ncol(soybean)
 
 ```
 
-Write about data here.
 
-```{r warning=FALSE, message=FALSE,include=FALSE}
+```{r fig.height=3, fig.width=5, message=FALSE, warning=FALSE, echo=FALSE}
 ggplot(soybean) + 
   geom_line(aes(x = Year, y = yield)) + 
   xlab("Year") +
@@ -56,7 +58,8 @@ ggplot(soybean) +
   theme_classic()
 ```
 
-```{r, warning=FALSE, message=FALSE,include=FALSE}
+
+```{r warning=FALSE, message=FALSE,include=FALSE}
 ts_soybean_full <- ts(soybean$yield,
                       start = soybean$Year[1],
                       frequency = 1)
@@ -69,6 +72,16 @@ ts_soybean_train <- ts(soybean$yield[1:(nobs_soy-nfor_soy)],
                  start = soybean$Year[1],
                  frequency = 1)
 
+adf <- (adf.test(ts_soybean_full,alternative="stationary"))
+pvalue <- round(adf$p.value,2)
+#P value greater than .05 so we fail to reject H0, data has stochastic trend
+```
+
+When examining soybean yield over time, it has appeared increase linearly with wide variations. After conducting an Augmented Dickey Fuller test, we find that the p value is `r pvalue`. Since this is above 0.05, we fail to reject H0, and our soybean yield data has stochastic trend, meaning it can change randomly.
+
+```{r, warning=FALSE, message=FALSE,include=FALSE}
+
+
 ts <- autoplot(ts_soybean_full, plot = FALSE, ylab = "Yield (bu./acre)")
 
 pacf <- autoplot(Pacf(ts_soybean_full, lag = 40, plot=FALSE),  
@@ -80,25 +93,18 @@ acf <- autoplot(Acf(ts_soybean_full, lag = 40, plot=FALSE),
 
 ```
 
-Write about PACF/ACF
-
-```{r}
+```{rr fig.height=3, fig.width=5, message=FALSE, warning=FALSE, echo=FALSE}
 plot_grid(ts, pacf, acf,
           nrow = 3)
 
 ```
-
-Write about stationary test
-
-```{r warning=FALSE, message=FALSE,include=FALSE}
-print((adf.test(ts_soybean_full,alternative="stationary")))
-#P value greater than .05 so we faill to reject H0, data has stochastic trend
-```
+When examining the PACF and ACF of our data we observe a cutoff in the PACF and a gradual decline in the ACF, meaning our data exhibits autoregressive characteristics. An autoregressive component and stochastic trend means that yield depends on previous observations and a stochastic term.
 
 
 #### Models
 
-Simple and ARIMA
+\
+Next, we trained various models on our time series, using a 10% holdout (five years) to test our models. We began by testing simple methods including the simple moving average and simple exponential smoothing. Next, we used an auto arima model, which determined an Arima(3,1,0) as the optimal model. This was interesting as it looked as if our cutoff was at lag one, not lag three. A TBATS, neural network, state space exponential smoothing, and structural time series were also used. The neural network's p and P values were chosen by experimenting to see what yielded the closest fit. The state space exponential smoothing was an ETS(AAN) local trend model.
 
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 
@@ -124,9 +130,6 @@ ses_scores <- accuracy(ses_soy$mean, ts_soybean_test)
 
 ```
 
-
-BATS
-
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 TBATS_fit <- tbats(ts_soybean_train)
 TBATS_forecast <- forecast(TBATS_fit, h = nfor_soy)
@@ -134,8 +137,6 @@ TBATS_forecast <- forecast(TBATS_fit, h = nfor_soy)
 TBATS_scores <- accuracy(TBATS_forecast$mean, ts_soybean_test)
 
 ```
-
-Neural Network
 
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 
@@ -150,8 +151,6 @@ NN_scores <- accuracy(Nnfor_soyecast$mean, ts_soybean_test)
 
 ```
 
-
-State space exponential smoothing
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 SSES_fit <- es(ts_soybean_train, model = "ZZZ", h = nfor_soy, holdout = FALSE)
 SSES_forecast <- forecast(SSES_fit, h = nfor_soy)
@@ -174,10 +173,13 @@ StructTS_scores <- accuracy(StructTS_forecast$mean, ts_soybean_test)
 
 
 
-
 #### Scenario generation
 
-```{r include=FALSE warning=FALSE, message=FALSE,include=FALSE}
+\
+To explore effects of different variables on soybean yield we next used scenario generation. Data from NOAA's "Climate at a Glance" state and regional time series was used. This provided data such as precipitation, Palmer Drought Severity Index (PDSI), Palmer Hydrological Drought Index (PHDI), and Palmer Modified Drought Index (PMDI). We downloaded precipitation and PDSI data from key soybean production states including Illinois, Indiana, Iowa, and Minnesota. We also downloaded country wide precipitation, PDHI, PDSI, and PMDI data. Lastly, we downloaded precipitation and PDSI data from the soybean belt (both area weighted and productivity weighted). This data was aggregated to the year and combined with our soybean yield. Time series, following the same ten percent holdout rule, were created. Correlation between variables was then calculated, and forecast generation was conducted using auto arima and 1000 scenarios. 
+
+
+```{r include=FALSE, warning=FALSE, message=FALSE,include=FALSE}
 data_folder <- "/home/guest/MaynardSalazarShang_ENV797_TSA_FinalProject/data/"
 
 files <- list.files(data_folder, pattern = "i.csv")
@@ -239,27 +241,26 @@ scenario_df <- soybean %>% #assumes cols Year, yield
 
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 #cor(scenario_df[,2:ncol(scenario_df)])
-ncol_soy <- ncol(final_df)
+ncol_soy <- ncol(scenario_df)
 
 
 scenario_ts <- ts((scenario_df[,2:ncol_soy]), start = c(1975,1), frequency = 1)
 
-scenario_ts_train <- ts((scenario_df[1:(nobs-n_for),2:ncol_soy]), start = c(1975,1), frequency = 1)
+scenario_ts_train <- ts((scenario_df[1:(nobs_soy-nfor_soy),2:ncol_soy]), start = c(1975,1), frequency = 1)
 
-scenario_ts_test <- ts((scenario_df[(nobs-n_for+1):nobs,2:ncol_soy]), start = scenario_df$Year[nobs-n_for+1], frequency = 1)
+scenario_ts_test <- ts((scenario_df[(nobs_soy-nfor_soy+1):nobs_soy,2:ncol_soy]), start = scenario_df$Year[nobs_soy-nfor_soy+1], frequency = 1)
 
 
 R = cor(scenario_ts_train)
 
 
-horizon=n_for  #we want to forecast two years ahead in monthly steps
+horizon=nfor_soy  #we want to forecast two years ahead in monthly steps
 nscen=1000    #number of scenarios to be generated 
 
 X=array(0,c(ncol(scenario_ts_train),horizon,nscen)) #array where we will store the independently generated scenarios 
 
 
 ```
-
 
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 
@@ -324,7 +325,7 @@ for(s in 1:nscen){
 
 # the vector of years in your test period:
 yield <- 1
-test_years <- soybean$Year[(nobs-n_for+1):nobs]
+test_years <- soybean$Year[(nobs_soy-nfor_soy+1):nobs_soy]
 
 # assemble
 scenario_df <- 
@@ -382,8 +383,9 @@ scenario_plot <- ggplot() +
          subtitle = "Gray = each scenario; blue band = 10–90% range; red = actual") +
     theme_classic()
 ```
-
-```{r}
+After visualizing our scenarios, we can see that our 10% to 90% confidence band captures all actual scenarios, with the mean of our scenarios closely following the actual data.
+\
+```{r fig.height=3, fig.width=5, message=FALSE, warning=FALSE, echo=FALSE}
 scenario_plot
 ```
 
@@ -419,9 +421,9 @@ scenario_scores <- accuracy(fc$mean, ts_soybean_test)
 #### Accuracy and recommendations
 
 
-```{r}
+```{r warning=FALSE, message=FALSE,include=FALSE}
 
-autoplot(ts_soybean_full) +
+forecasts_all_plot <- autoplot(ts_soybean_full) +
   autolayer(sma_soy$forecast, series = "Simple Moving Average") +
   autolayer(ses_soy$mean, series = "Simple Exponential Smoothing") +
   autolayer(sarima_forecast$mean, series = "ARIMA(3,1,0)") +
@@ -432,7 +434,7 @@ autoplot(ts_soybean_full) +
   autolayer(fc$mean, series = "Scenarios Mean") +
   ylab("Yield (bu./acre)") 
 
-autoplot(ts_soybean_full) +
+forecasts_all_plot_2018_2023 <- autoplot(ts_soybean_full) +
   autolayer(sma_soy$forecast, series = "Simple Moving Average") +
   autolayer(ses_soy$mean, series = "Simple Exponential Smoothing") +
   autolayer(sarima_forecast$mean, series = "ARIMA(3,1,0)") +
@@ -445,6 +447,13 @@ autoplot(ts_soybean_full) +
   xlim(c(2018,2023))
   
 ```
+\
+
+```{r fig.height=3, fig.width=5, message=FALSE, warning=FALSE, echo=FALSE}
+forecasts_all_plot_2018_2023
+```
+
+
 
 ```{r warning=FALSE, message=FALSE,include=FALSE}
 #edit to include all
@@ -465,12 +474,13 @@ scores <- kbl(soy_scores,
 
 
 ```
+\
 
-
-```{r}
+```{r echo=FALSE}
 scores
 ```
-
+\
+When looking at the error metrics for our various forecasting techniques the exponential smoothing  has the lowest mean absolute percentage error and mean percentage error. Scenario generation is effective in creating scenarios based on possible precipitations and drought indices. 
 
 ### Rye
 
