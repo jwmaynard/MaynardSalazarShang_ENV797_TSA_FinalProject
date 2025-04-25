@@ -742,7 +742,7 @@ kbl(all_scores,
 
 >> The ARIMA model performed reasonably well, with a slightly higher RMSE (1.99) and MAE (1.66), but it maintained a positive MPE (1.02) and low ACF1 (0.04), suggesting minimal autocorrelation in residuals—an indicator of good model fit.
 
->> StructTS and TBATS both underperformed relative to NNETAR and ARIMA, with RMSE values exceeding 2.0 and higher MAE and MAPE scores. While TBATS had the highest ME and RMSE, its negative ACF1 value (-0.089) may point to some overfitting or residual autocorrelation that undercuts forecast reliability.
+> StructTS and TBATS both underperformed relative to NNETAR and ARIMA, with RMSE values exceeding 2.0 and higher MAE and MAPE scores. While TBATS had the highest ME and RMSE, its negative ACF1 value (-0.089) may point to some overfitting or residual autocorrelation that undercuts forecast reliability.
 
 
 
