@@ -224,7 +224,7 @@ annual_list <- imap(annual_list, ~
 )
 
 #Reduce the list with full_join() and add soybean
-state_values <- reduce(annual_list, inner_join, by = "Year")
+state_values <- reduce(annual_list, inner_join, by = "Year", .init = null)
 
 scenario_df <- soybean %>% #assumes cols Year, yield
   rename(yield = yield) %>%  #change if needed
