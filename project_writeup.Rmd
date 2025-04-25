@@ -483,12 +483,269 @@ scores
 When looking at the error metrics for our various forecasting techniques the exponential smoothing  has the lowest mean absolute percentage error and mean percentage error. Scenario generation is effective in creating scenarios based on possible precipitations and drought indices. 
 
 ### Rye
+The dataset used for forecasting rye yields in the United States comes from the U.S. Department of Agriculture and includes annual data from 1866 to 2024. It captures long-term trends in rye production, with yields reported in bushels per acre. This measure reflects the efficiency of production rather than total output. In 2024, the U.S. harvested 402,000 acres of rye, resulting in a total production of 14.8 million bushels. This rich historical dataset provides a solid foundation for modeling and forecasting future yield patterns.
 
 #### Data exploration
+```{r}
+# Set the path to your desktop (Windows example)
+library(here)
+here()
+file_path <- paste0(here(),"/data/","Wheat Data-All Years.xlsx")
+
+
+
+# Read the Excel file
+data_rye <- read_excel(file_path, sheet = "Table02", skip = 1)
+data_wheat <- read_excel(file_path, sheet = "Table04", skip = 1)
+
+```
+
+```{r}
+wheat_p <- data_wheat$`U.S. production (million bushels)`  # Replace with the exact column name if different
+
+# Create a time series starting from 1866 with yearly data
+start_year_w <- 1960
+wheat_ts <- ts(wheat_p, start = start_year_w, frequency = 1)
+
+
+# Plot the time series
+plot(wheat_ts, main = "U.S. production (million bushels)", ylab = "U.S. production (million bushels)", xlab = "Year")
+```
+
+```{r}
+yield_data <- data_rye$`Yield (bushels per acre)`  # Replace with the exact column name if different
+
+# Create a time series starting from 1866 with yearly data
+start_year <- 1866
+rye_ts <- ts(yield_data, start = start_year, frequency = 1)
+
+# View the time series
+print(rye_ts)
+
+# Optionally, plot the time series
+plot(rye_ts, main = "Rye Yield (Bushels per Acre)", ylab = "Yield", xlab = "Year")
+```
+
+
+```{r}
+rye_ACF <- Acf(rye_ts, lag=40, plot=FALSE)
+rye_PACF <- Pacf(rye_ts, lag=40, plot=FALSE)
+
+autoplot(rye_ACF) + theme_classic()
+autoplot(rye_PACF) + theme_classic()
+```
+
+
+```{r}
+rye_ts
+
+```
+```{r}
+rye_tsc <- na.omit(rye_ts)
+length(rye_tsc)
+```
+
+```{r}
+nobs <- length(rye_tsc)
+t <- c(1:nobs)
+
+linear_trend_model_rye <- lm(rye_tsc ~ t) 
+summary(linear_trend_model_rye)
+
+#saving regression coefficients
+beta0_rye <- as.numeric(linear_trend_model_rye$coefficients[1])
+beta1_rye <- as.numeric(linear_trend_model_rye$coefficients[2])
+```
+
+>Across the full time series, rye yields in the U.S. increased at an average rate of 0.15 bushels per acre per year. However, this growth was not consistent over time. Between 1950 and 2000, the rate of increase significantly accelerated, with yields rising by an average of 0.32 bushels per acre per year—more than double the long-term trend.
 
 #### Models
+> To improve the accuracy and reliability of our time series forecasting for U.S. rye yields (measured in bushels per acre), we deliberately limited the dataset to include only data from 1920 onward. This decision was made to minimize potential skewness introduced by earlier, less consistent historical data, and to better reflect the agricultural practices, technologies, and climate conditions relevant to the modern era.
+
+
+```{r}
+# Original cleaned time series
+start_year <- 1866
+new_start <- 1920
+new_end <- 2024
+
+# Calculate the index position of the new year
+start_index <- new_start - start_year + 1
+
+# Create new time series from new year onward
+rye_ts_ny <- window(rye_tsc, start = new_start, end = new_end)
+```
+
+```{r}
+rye_ts_ny
+```
+
+
+```{r}
+nobs <- length(rye_ts_ny)
+t <- c(1:nobs)
+
+linear_trend_model_rye_ny <- lm(rye_ts_ny ~ t) 
+summary(linear_trend_model_rye_ny)
+
+#saving regression coefficients
+beta0_rye <- as.numeric(linear_trend_model_rye_ny$coefficients[1])
+beta1_rye <- as.numeric(linear_trend_model_rye_ny$coefficients[2])
+```
+
+
+
+State space exponential smoothing
+```{r}
+#Plotting Data
+
+ts <- autoplot(rye_ts, plot = FALSE) + theme_classic()
+
+pacf <- autoplot(Pacf(rye_ts, lag = 40, plot=FALSE),  
+                  main = "PACF") + theme_classic()
+
+acf <- autoplot(Acf(rye_ts, lag = 40, plot=FALSE),  
+                  main = "ACF") + theme_classic()
+
+plot_grid(ts, pacf, acf,
+          nrow = 3
+)
+
+
+```
+
+```{r}
+#Stationary Test
+
+print((adf.test(rye_ts_ny,alternative="stationary")))
+#P value less than .05 so we fail to reject H0, data has no stochastic trend
+```
+Forecasting Simple Techniques
+```{r}
+naive_rye <- naive(rye_ts_ny, h = 5)
+plot(naive_rye)
+
+```
+
+```{r}
+#simple moving average
+sma_rye <- sma(y = rye_ts_ny, h = 5, holdout = FALSE, silent = FALSE)
+plot(sma_rye)
+
+autoplot(rye_ts_ny) + 
+  autolayer(sma_rye$forecast)
+```
+
+```{r}
+#simple exponential smoothing
+ses_rye <- ses(y = rye_ts_ny, h = 5, holdout = FALSE, silent = FALSE)
+
+plot(rye_ts_ny, col = 'black')
+lines(ses_rye$fitted, col = 'blue')
+```
+
+```{r}
+#auto arima
+rye_ARIMA <- auto.arima(rye_ts_ny,seasonal = FALSE, lambda = 0)
+rye_arima_forecast <-forecast(rye_ARIMA)
+
+autoplot(rye_arima_forecast, ylab = "Yield (bushels per acre)")
+
+arima_scores <- accuracy(rye_arima_forecast)
+
+```
+
+
+
+BATS
+
+```{r}
+TBATS_fit <- tbats(rye_ts_ny)
+TBATS_forecast <- forecast(TBATS_fit)
+
+autoplot(TBATS_forecast) + 
+  autolayer((rye_ts_ny))
+
+TBATS_scores <- accuracy(TBATS_forecast)
+
+```
+
+Neural Network
+
+```{r}
+NN_fit <- nnetar(rye_ts_ny,
+                 P = 2,
+                 p = 2)
+                
+NN_forecast <- forecast(NN_fit) 
+
+autoplot(NN_forecast) + 
+  autolayer(rye_ts_ny)
+
+NN_scores <- accuracy(NN_forecast)
+
+```
+
+State space exponential smoothing
+```{r}
+SSES_rye <- es(rye_ts_ny, model = "ZZZ", h <- 10, holdout = FALSE)
+plot(SSES_rye)
+checkresiduals(SSES_rye)
+SSES_rye$model
+
+SS_fit <- StructTS(rye_ts_ny,
+                   type = "trend")
+checkresiduals(SS_fit)
+
+SS_forecast <- forecast(SS_fit, h = 10)
+
+autoplot(SS_forecast) +
+  autolayer(rye_ts_ny)
+
+SS_scores <- accuracy(SS_forecast)
+
+```
 
 #### Accuracy and recommendations
+```{r}
+# Combine all scores into one data frame
+all_scores <- rbind(
+  cbind(Model = "ARIMA", arima_scores),
+  cbind(Model = "TBATS", TBATS_scores),
+  cbind(Model = "NNETAR", NN_scores),
+  cbind(Model = "StructTS", SS_scores)
+)
+
+# Convert to data frame for kable
+all_scores <- as.data.frame(all_scores)
+
+# Ensure numeric columns are correctly typed (in case they are characters from rbind)
+numeric_cols <- setdiff(colnames(all_scores), "Model")
+all_scores[numeric_cols] <- lapply(all_scores[numeric_cols], as.numeric)
+
+# Find index of the row with the lowest RMSE
+lowest_rmse_index <- which.min(all_scores[["RMSE"]])
+
+# Create a styled table with the model that has the lowest RMSE highlighted
+kbl(all_scores, 
+    caption = "Forecast Accuracy Across Models",
+    digits = array(5, ncol(all_scores))) %>%
+  kable_styling(full_width = FALSE, position = "center") %>%
+  row_spec(lowest_rmse_index, bold = TRUE, background = "#DFF0D8") %>%
+  kable_styling(latex_options = "striped")
+```
+
+
+>> Looking at the accuracy results for the four different time series models—ARIMA, TBATS, NNETAR, and StructTS— that were evaluated to forecast rye yields in the U.S. over the next 10 years. We can see that NNETAR stand out. Each model was assessed using standard accuracy metrics, including Mean Error (ME), Root Mean Squared Error (RMSE), Mean Absolute Error (MAE), and Mean Absolute Scaled Error (MASE), among others.
+
+>> The NNETAR model has the lowest RMSE (1.91) and MAE (1.55), indicating superior forecasting accuracy compared to the other models. It also posted the lowest MASE (0.82), reinforcing its relative strength in capturing patterns in the training data. Although its Mean Percentage Error (MPE) was slightly negative (-1.25), this implies a modest tendency to underpredict.
+
+>> The ARIMA model performed reasonably well, with a slightly higher RMSE (1.99) and MAE (1.66), but it maintained a positive MPE (1.02) and low ACF1 (0.04), suggesting minimal autocorrelation in residuals—an indicator of good model fit.
+
+>> StructTS and TBATS both underperformed relative to NNETAR and ARIMA, with RMSE values exceeding 2.0 and higher MAE and MAPE scores. While TBATS had the highest ME and RMSE, its negative ACF1 value (-0.089) may point to some overfitting or residual autocorrelation that undercuts forecast reliability.
+
+
+
 
 ### Corn
 
