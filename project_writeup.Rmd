@@ -497,3 +497,10 @@ When looking at the error metrics for our various forecasting techniques the exp
 #### Models
 
 #### Accuracy and recommendations
+
+#### Sources
+
+- https://www.ncei.noaa.gov/access/monitoring/climate-at-a-glance/regional/time-series
+- https://www.fas.usda.gov/data/production/commodity/2222000
+- https://www.ers.usda.gov/topics/crops/soybeans-and-oil-crops
+- https://www.ers.usda.gov/data-products/commodity-costs-and-returns
